@@ -718,10 +718,79 @@ function StreamingText({ sessionId }: { sessionId: string }) {
 
 ## Testing Strategy
 
-### Unit Tests
-- `OpencodeClient` mock server responses
-- Event parser correctness
-- Database write accuracy
+### Unit Tests (`packages/mcp/src/__tests__/`)
+
+```typescript
+// client/opencode.test.ts
+describe('OpencodeClient', () => {
+  it('creates session via HTTP', async () => {});
+  it('sends prompt async', async () => {});
+  it('parses SSE events correctly', async () => {});
+  it('handles connection errors gracefully', async () => {});
+});
+
+// client/claude.test.ts
+describe('ClaudeClient', () => {
+  it('spawns claude -p with correct args', async () => {});
+  it('parses NDJSON stream', async () => {});
+  it('handles tool_use events', async () => {});
+  it('captures cost from result event', async () => {});
+});
+
+// execution/executor.test.ts
+describe('TaskExecutor', () => {
+  it('creates task in DB on start', async () => {});
+  it('records tool calls as they happen', async () => {});
+  it('marks task complete on success', async () => {});
+  it('marks task failed on error', async () => {});
+});
+```
+
+### Integration Tests (`packages/mcp/src/__tests__/integration/`)
+
+```typescript
+// Requires: opencode serve running
+describe('GLM Integration', () => {
+  it('executes simple read task end-to-end', async () => {});
+  it('streams events to database in real-time', async () => {});
+});
+
+// Requires: claude CLI available
+describe('Opus Integration', () => {
+  it('executes planning task end-to-end', async () => {});
+  it('captures tool calls and cost', async () => {});
+});
+```
+
+### E2E Tests (`packages/dashboard/e2e/`)
+
+```typescript
+// Using Playwright
+describe('Dashboard', () => {
+  it('shows live session when task running', async () => {});
+  it('displays tool calls in timeline', async () => {});
+  it('reconnects SSE on disconnect', async () => {});
+});
+```
+
+### Test Commands
+
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:unit": "vitest run --dir src/__tests__ --exclude integration",
+    "test:integration": "vitest run --dir src/__tests__/integration",
+    "test:e2e": "playwright test"
+  }
+}
+```
+
+### Mocking Strategy
+
+- **OpencodeClient**: Use `msw` (Mock Service Worker) for HTTP/SSE mocking
+- **ClaudeClient**: Mock `spawn` to return fake NDJSON streams
+- **Database**: Use in-memory SQLite for tests
 
 ### Integration Tests
 - End-to-end task execution with real opencode server
