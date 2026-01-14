@@ -4,6 +4,10 @@
   "description": "MCP server that lets Claude delegate coding tasks to GLM-4.7 and Opus",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client/index.js"
+  },
   "bin": {
     "glm-orchestrator": "dist/index.js"
   },

@@ -26,6 +26,9 @@ importers:
 
   packages/dashboard:
     dependencies:
+      '@glm/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@glm/shared':
         specifier: workspace:*
         version: link:../shared

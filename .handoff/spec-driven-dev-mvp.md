@@ -10,9 +10,9 @@ A web-based tool where you write specs with AI assistance, break them into chunk
 
 ## Current Progress
 
-**Status:** Day 1 - Complete
+**Status:** Day 2 - Complete
 **Last Updated:** 2025-01-14
-**Next Task:** Day 2 - Spec & Chunks
+**Next Task:** Day 3 - Execution
 
 ### Completed
 - [x] Project structure (monorepo with pnpm + turborepo)
@@ -27,9 +27,17 @@ A web-based tool where you write specs with AI assistance, break them into chunk
   - [x] Project list UI (home page)
   - [x] Create Project modal
   - [x] Project workspace page placeholder
+- [x] **Day 2: Spec & Chunks**
+  - [x] Spec API routes (GET, PUT)
+  - [x] Spec refine endpoint with Opus integration
+  - [x] Spec editor component with auto-save
+  - [x] Chunks API routes (CRUD + reorder)
+  - [x] Chunk list component with move controls
+  - [x] Chunk editor modal
+  - [x] Full project workspace UI
 
 ### In Progress
-- [ ] **Day 2: Spec & Chunks** ← START HERE
+- [ ] **Day 3: Execution** ← START HERE
 
 ### Blockers / Notes
 _None_
@@ -307,12 +315,12 @@ GET    /api/events/[chunkId]      # SSE stream for specific chunk
 - [x] Set up API routes structure
 - [x] Project CRUD (API + basic UI)
 
-### Day 2: Spec & Chunks
-- [ ] Spec editor component (simple textarea initially)
-- [ ] Spec API routes
-- [ ] Chunk list component
-- [ ] Chunk CRUD (API + UI)
-- [ ] Chunk reordering (drag & drop or arrows)
+### Day 2: Spec & Chunks ✅
+- [x] Spec editor component (simple textarea initially)
+- [x] Spec API routes
+- [x] Chunk list component
+- [x] Chunk CRUD (API + UI)
+- [x] Chunk reordering (drag & drop or arrows)
 
 ### Day 3: Execution
 - [ ] "Run chunk" endpoint (integrates OpencodeClient)
