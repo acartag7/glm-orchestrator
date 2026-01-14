@@ -441,22 +441,28 @@ MVP is complete when:
 
 ## What's Next (Post-MVP)
 
-**Phase 2: Review Loop**
+**Phase 2: MCP Integration**
+- Project-level MCP server configuration
+- Pass MCP tools to chunk execution (database, docker, APIs, etc.)
+- Tool selection UI per project
+- Enable chunks to use custom tools beyond file operations
+
+**Phase 3: Review Loop**
 - After chunk completes, Opus reviews the code
 - Checks: tests pass, no security issues, code quality
 - If issues found → creates fix chunk automatically
 
-**Phase 3: Visualization**
+**Phase 4: Visualization**
 - n8n-style graph view of chunks
 - Visual status indicators
-- Parallel execution support
+- Parallel execution support (with dependency tracking)
 
-**Phase 4: Git Integration**
+**Phase 5: Git Integration**
 - Each chunk creates a commit
 - Option to create PR per feature
 - Branch management
 
-**Phase 5: Advanced**
+**Phase 6: Advanced**
 - Project templates
 - Chunk templates
 - Team collaboration
