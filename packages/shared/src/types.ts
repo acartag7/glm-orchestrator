@@ -38,7 +38,7 @@ export interface Chunk {
   completedAt?: number;
 }
 
-export type ChunkStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ChunkStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 
 export interface ChunkToolCall {
   id: string;

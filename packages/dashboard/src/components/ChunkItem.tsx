@@ -40,6 +40,12 @@ const statusConfig = {
     bg: 'bg-red-900/30',
     label: 'Failed',
   },
+  cancelled: {
+    icon: '⊘',
+    color: 'text-yellow-400',
+    bg: 'bg-yellow-900/20',
+    label: 'Cancelled',
+  },
 };
 
 export default function ChunkItem({
@@ -55,7 +61,7 @@ export default function ChunkItem({
   onRun,
 }: ChunkItemProps) {
   const status = statusConfig[chunk.status];
-  const canRun = chunk.status === 'pending' || chunk.status === 'failed';
+  const canRun = chunk.status === 'pending' || chunk.status === 'failed' || chunk.status === 'cancelled';
 
   return (
     <div className={`${status.bg} border border-gray-800 rounded-lg p-3 group`}>

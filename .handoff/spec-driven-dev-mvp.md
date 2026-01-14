@@ -10,9 +10,9 @@ A web-based tool where you write specs with AI assistance, break them into chunk
 
 ## Current Progress
 
-**Status:** Day 2 - Complete
+**Status:** Day 3 - Complete
 **Last Updated:** 2025-01-14
-**Next Task:** Day 3 - Execution
+**Next Task:** Day 4 - Opus Integration & Polish
 
 ### Completed
 - [x] Project structure (monorepo with pnpm + turborepo)
@@ -35,9 +35,19 @@ A web-based tool where you write specs with AI assistance, break them into chunk
   - [x] Chunk list component with move controls
   - [x] Chunk editor modal
   - [x] Full project workspace UI
+- [x] **Day 3: Execution**
+  - [x] Added 'cancelled' status to ChunkStatus type
+  - [x] Run chunk API endpoint (/api/chunks/[id]/run)
+  - [x] Abort chunk API endpoint (/api/chunks/[id]/abort)
+  - [x] SSE events stream (/api/chunks/[id]/events)
+  - [x] Execution service with OpencodeClient integration
+  - [x] useExecution hook for state management
+  - [x] ExecutionPanel component with live tool calls
+  - [x] Sequential execution (one chunk at a time)
+  - [x] Timeout handling (5 min default)
 
 ### In Progress
-- [ ] **Day 3: Execution** ← START HERE
+- [ ] **Day 4: Opus Integration & Polish** ← START HERE
 
 ### Blockers / Notes
 _None_
@@ -322,11 +332,11 @@ GET    /api/events/[chunkId]      # SSE stream for specific chunk
 - [x] Chunk CRUD (API + UI)
 - [x] Chunk reordering (drag & drop or arrows)
 
-### Day 3: Execution
-- [ ] "Run chunk" endpoint (integrates OpencodeClient)
-- [ ] Execution panel component
-- [ ] Tool call streaming via SSE
-- [ ] Status updates (pending → running → completed/failed)
+### Day 3: Execution ✅
+- [x] "Run chunk" endpoint (integrates OpencodeClient)
+- [x] Execution panel component
+- [x] Tool call streaming via SSE
+- [x] Status updates (pending → running → completed/failed/cancelled)
 
 ### Day 4: Opus Integration & Polish
 - [ ] "Ask Opus to refine" endpoint (integrates ClaudeClient)

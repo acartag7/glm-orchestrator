@@ -6,6 +6,8 @@ import Link from 'next/link';
 import type { Project, Spec, Chunk } from '@glm/shared';
 import SpecEditor from '@/components/SpecEditor';
 import ChunkList from '@/components/ChunkList';
+import ExecutionPanel from '@/components/ExecutionPanel';
+import { useExecution } from '@/hooks/useExecution';
 
 interface ProjectData {
   project: Project;
@@ -20,7 +22,9 @@ export default function ProjectWorkspace() {
   const [chunks, setChunks] = useState<Chunk[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [runningChunkId, setRunningChunkId] = useState<string | null>(null);
+  const [selectedChunk, setSelectedChunk] = useState<Chunk | null>(null);
+
+  const { state: executionState, runChunk, abortChunk } = useExecution();
 
   // Fetch project and chunks
   useEffect(() => {
@@ -63,12 +67,56 @@ export default function ProjectWorkspace() {
   // Handle chunks updates
   const handleChunksChange = useCallback((updatedChunks: Chunk[]) => {
     setChunks(updatedChunks);
-  }, []);
+    // Update selected chunk if it was updated
+    if (selectedChunk) {
+      const updated = updatedChunks.find(c => c.id === selectedChunk.id);
+      if (updated) setSelectedChunk(updated);
+    }
+  }, [selectedChunk]);
 
-  // Handle running a chunk (placeholder - execution will be Day 3)
-  const handleRunChunk = useCallback((chunk: Chunk) => {
-    alert(`Execution coming in Day 3!\n\nWill run: "${chunk.title}"`);
-  }, []);
+  // Handle running a chunk
+  const handleRunChunk = useCallback(async (chunk: Chunk) => {
+    setSelectedChunk(chunk);
+    try {
+      await runChunk(chunk.id);
+      // Refresh chunks to get updated status
+      const response = await fetch(`/api/projects/${projectId}/chunks`);
+      if (response.ok) {
+        const updatedChunks = await response.json();
+        setChunks(updatedChunks);
+      }
+    } catch (err) {
+      console.error('Failed to run chunk:', err);
+    }
+  }, [runChunk, projectId]);
+
+  // Handle cancelling execution
+  const handleCancelExecution = useCallback(async () => {
+    if (executionState.chunkId) {
+      try {
+        await abortChunk(executionState.chunkId);
+        // Refresh chunks
+        const response = await fetch(`/api/projects/${projectId}/chunks`);
+        if (response.ok) {
+          const updatedChunks = await response.json();
+          setChunks(updatedChunks);
+        }
+      } catch (err) {
+        console.error('Failed to abort chunk:', err);
+      }
+    }
+  }, [abortChunk, executionState.chunkId, projectId]);
+
+  // Sync chunk status from execution state
+  useEffect(() => {
+    if (executionState.chunkId && executionState.status) {
+      setChunks(prev => prev.map(c =>
+        c.id === executionState.chunkId
+          ? { ...c, status: executionState.status! }
+          : c
+      ));
+    }
+  }, [executionState.chunkId, executionState.status]);
 
   if (isLoading) {
     return (
@@ -104,6 +152,11 @@ export default function ProjectWorkspace() {
 
   const { project, spec } = data;
 
+  // Get the chunk being executed for the panel
+  const executingChunk = executionState.chunkId
+    ? chunks.find(c => c.id === executionState.chunkId) || selectedChunk
+    : selectedChunk;
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Header */}
@@ -126,6 +179,15 @@ export default function ProjectWorkspace() {
               {project.directory}
             </p>
           </div>
+          {executionState.isRunning && (
+            <div className="flex items-center gap-2 text-sm text-blue-400">
+              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Running...
+            </div>
+          )}
         </div>
       </header>
 
@@ -151,7 +213,7 @@ export default function ProjectWorkspace() {
               chunks={chunks}
               onChunksChange={handleChunksChange}
               onRunChunk={handleRunChunk}
-              runningChunkId={runningChunkId}
+              runningChunkId={executionState.chunkId}
             />
           </div>
         </div>
@@ -159,27 +221,15 @@ export default function ProjectWorkspace() {
         {/* Right Column - Execution */}
         <div className="w-1/2 flex flex-col min-h-0">
           <div className="flex-1 p-6 overflow-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
-                Execution
-              </h2>
-            </div>
-            <div className="bg-gray-900/50 border border-dashed border-gray-700 rounded-lg p-8 text-center h-[calc(100%-2rem)] flex items-center justify-center">
-              <div>
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gray-800 mb-4">
-                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="text-gray-400 text-sm mb-2">
-                  Select a chunk and click run to see execution progress here.
-                </p>
-                <p className="text-gray-600 text-xs">
-                  (Execution view coming in Day 3)
-                </p>
-              </div>
-            </div>
+            <ExecutionPanel
+              chunk={executingChunk || null}
+              toolCalls={executionState.toolCalls}
+              output={executionState.output}
+              error={executionState.error}
+              isRunning={executionState.isRunning}
+              startedAt={executionState.startedAt}
+              onCancel={executionState.isRunning ? handleCancelExecution : undefined}
+            />
           </div>
         </div>
       </div>

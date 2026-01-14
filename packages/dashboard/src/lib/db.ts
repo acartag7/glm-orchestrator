@@ -160,6 +160,13 @@ function rowToSpec(row: SpecRow): Spec {
   };
 }
 
+export function getSpec(id: string): Spec | null {
+  const database = getDb();
+  const stmt = database.prepare(`SELECT * FROM specs WHERE id = ?`);
+  const row = stmt.get(id) as SpecRow | undefined;
+  return row ? rowToSpec(row) : null;
+}
+
 export function getSpecByProject(projectId: string): Spec | null {
   const database = getDb();
   const stmt = database.prepare(`
