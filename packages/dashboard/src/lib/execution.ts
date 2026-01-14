@@ -20,6 +20,7 @@ interface ActiveExecution {
   unsubscribe: () => void;
   listeners: Set<(event: ExecutionEvent) => void>;
   textOutput: string;
+  eventBuffer: ExecutionEvent[]; // Buffer events for late subscribers
 }
 
 export type ExecutionEvent =
@@ -124,7 +125,7 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
     // Check opencode health
     const health = await client.checkHealth();
     if (!health.healthy) {
-      return { success: false, error: 'OpenCode server is not available. Make sure it is running.' };
+      return { success: false, error: 'OpenCode server is not available at http://localhost:4096. Make sure opencode is running.' };
     }
 
     // Create session
@@ -140,20 +141,25 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
 
     // Create event handler
     const eventHandler: EventHandler = {
-      onSessionStatus: (sessionId, status) => {
-        if (sessionId === session.id) {
+      onSessionStatus: (eventSessionId, status) => {
+        console.error(`[Execution] SessionStatus: ${eventSessionId} vs ${session.id}, status: ${status}`);
+        // Match by session ID or directory
+        if (eventSessionId === session.id || eventSessionId === project.directory) {
           if (status === 'busy') {
             emitEvent(chunkId, { type: 'status', status: 'running' });
           }
         }
       },
-      onToolCall: (sessionId, toolCall) => {
-        if (sessionId === session.id) {
+      onToolCall: (eventSessionId, toolCall) => {
+        console.error(`[Execution] ToolCall: ${eventSessionId} vs ${session.id}, tool: ${toolCall.tool}`);
+        // Match by session ID or directory
+        if (eventSessionId === session.id || eventSessionId === project.directory) {
           handleToolCall(chunkId, toolCall);
         }
       },
-      onTextChunk: (sessionId, text) => {
-        if (sessionId === session.id) {
+      onTextChunk: (eventSessionId, text) => {
+        // Match by session ID or directory
+        if (eventSessionId === session.id || eventSessionId === project.directory) {
           // Accumulate text output
           const execution = activeExecutions.get(chunkId);
           if (execution) {
@@ -163,13 +169,16 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
         }
       },
       onFileEdit: () => {},
-      onError: (sessionId, error) => {
-        if (sessionId === session.id) {
+      onError: (eventSessionId, error) => {
+        // Match by session ID or directory
+        if (eventSessionId === session.id || eventSessionId === project.directory) {
           handleError(chunkId, error.message);
         }
       },
-      onComplete: (sessionId) => {
-        if (sessionId === session.id) {
+      onComplete: (eventSessionId) => {
+        console.error(`[Execution] Complete: ${eventSessionId} vs ${session.id}`);
+        // Match by session ID or directory
+        if (eventSessionId === session.id || eventSessionId === project.directory) {
           handleComplete(chunkId);
         }
       },
@@ -189,6 +198,7 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
       unsubscribe,
       listeners,
       textOutput: '',
+      eventBuffer: [], // Buffer for late subscribers
     });
 
     // Send prompt
@@ -240,6 +250,16 @@ export async function abortChunkExecution(chunkId: string): Promise<{ success: b
 export function subscribeToExecution(chunkId: string, listener: (event: ExecutionEvent) => void): () => void {
   const execution = activeExecutions.get(chunkId);
   if (execution) {
+    // Replay buffered events to new subscriber
+    for (const event of execution.eventBuffer) {
+      try {
+        listener(event);
+      } catch (e) {
+        console.error('Error replaying event to listener:', e);
+      }
+    }
+
+    // Add listener for future events
     execution.listeners.add(listener);
     return () => execution.listeners.delete(listener);
   }
@@ -257,6 +277,10 @@ export function getExecution(chunkId: string): ActiveExecution | undefined {
 function emitEvent(chunkId: string, event: ExecutionEvent): void {
   const execution = activeExecutions.get(chunkId);
   if (execution) {
+    // Buffer event for late subscribers
+    execution.eventBuffer.push(event);
+
+    // Send to current listeners
     for (const listener of execution.listeners) {
       try {
         listener(event);

@@ -56,7 +56,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Call Claude to refine
-    const client = new ClaudeClient({ model: 'claude-opus-4-5-20250514' });
+    const client = new ClaudeClient({ model: 'claude-opus-4-5-20251101' });
     const result = await client.execute(prompt, {
       workingDirectory: project.directory,
       systemPrompt: REFINE_SYSTEM_PROMPT,

@@ -8,11 +8,13 @@ interface ChunkItemProps {
   isFirst: boolean;
   isLast: boolean;
   isRunning: boolean;
+  isSelected?: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onRun: () => void;
+  onClick?: () => void;
 }
 
 const statusConfig = {
@@ -54,17 +56,22 @@ export default function ChunkItem({
   isFirst,
   isLast,
   isRunning,
+  isSelected,
   onEdit,
   onDelete,
   onMoveUp,
   onMoveDown,
   onRun,
+  onClick,
 }: ChunkItemProps) {
   const status = statusConfig[chunk.status];
   const canRun = chunk.status === 'pending' || chunk.status === 'failed' || chunk.status === 'cancelled';
 
   return (
-    <div className={`${status.bg} border border-gray-800 rounded-lg p-3 group`}>
+    <div
+      className={`${status.bg} border ${isSelected ? 'border-blue-500' : 'border-gray-800'} rounded-lg p-3 group cursor-pointer hover:border-gray-600 transition-colors`}
+      onClick={onClick}
+    >
       <div className="flex items-start gap-3">
         {/* Status indicator */}
         <div className={`flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full ${status.color} font-medium text-sm`}>
@@ -100,7 +107,7 @@ export default function ChunkItem({
         </div>
 
         {/* Actions */}
-        <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex-shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
           {/* Move up */}
           <button
             onClick={onMoveUp}

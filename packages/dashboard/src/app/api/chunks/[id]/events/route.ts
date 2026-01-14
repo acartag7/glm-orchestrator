@@ -26,6 +26,8 @@ export async function GET(_request: Request, context: RouteContext) {
   const stream = new ReadableStream({
     start(controller) {
       // Send initial status
+      const toolCalls = getToolCallsByChunk(chunkId);
+      console.error(`[SSE Events] Sending init for chunk ${chunkId}, status: ${chunk.status}, toolCalls: ${toolCalls.length}`);
       const initialData = {
         type: 'init',
         chunk: {
@@ -34,7 +36,7 @@ export async function GET(_request: Request, context: RouteContext) {
           output: chunk.output,
           error: chunk.error,
         },
-        toolCalls: getToolCallsByChunk(chunkId),
+        toolCalls,
       };
       controller.enqueue(encoder.encode(`event: init\ndata: ${JSON.stringify(initialData)}\n\n`));
 
@@ -71,6 +73,7 @@ export async function GET(_request: Request, context: RouteContext) {
         }
       };
 
+      console.error(`[SSE] Subscribing to execution for chunk: ${chunkId}`);
       unsubscribe = subscribeToExecution(chunkId, listener);
 
       // Send heartbeat every 15 seconds to keep connection alive

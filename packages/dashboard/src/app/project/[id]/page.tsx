@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import type { Project, Spec, Chunk } from '@glm/shared';
+import type { Project, Spec, Chunk, ChunkToolCall } from '@glm/shared';
 import SpecEditor from '@/components/SpecEditor';
 import ChunkList from '@/components/ChunkList';
 import ExecutionPanel from '@/components/ExecutionPanel';
@@ -12,6 +12,11 @@ import { useExecution } from '@/hooks/useExecution';
 interface ProjectData {
   project: Project;
   spec: Spec | null;
+}
+
+interface ChunkHistory {
+  chunk: Chunk;
+  toolCalls: ChunkToolCall[];
 }
 
 export default function ProjectWorkspace() {
@@ -23,6 +28,7 @@ export default function ProjectWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedChunk, setSelectedChunk] = useState<Chunk | null>(null);
+  const [chunkHistory, setChunkHistory] = useState<ChunkHistory | null>(null);
 
   const { state: executionState, runChunk, abortChunk } = useExecution();
 
@@ -73,6 +79,25 @@ export default function ProjectWorkspace() {
       if (updated) setSelectedChunk(updated);
     }
   }, [selectedChunk]);
+
+  // Handle selecting a chunk to view its history
+  const handleSelectChunk = useCallback(async (chunk: Chunk) => {
+    setSelectedChunk(chunk);
+    // Only load history for completed/failed chunks
+    if (chunk.status === 'completed' || chunk.status === 'failed' || chunk.status === 'cancelled') {
+      try {
+        const response = await fetch(`/api/chunks/${chunk.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setChunkHistory({ chunk: data.chunk, toolCalls: data.toolCalls });
+        }
+      } catch (err) {
+        console.error('Failed to load chunk history:', err);
+      }
+    } else {
+      setChunkHistory(null);
+    }
+  }, []);
 
   // Handle running a chunk
   const handleRunChunk = useCallback(async (chunk: Chunk) => {
@@ -152,10 +177,22 @@ export default function ProjectWorkspace() {
 
   const { project, spec } = data;
 
-  // Get the chunk being executed for the panel
-  const executingChunk = executionState.chunkId
+  // Determine what to show in the execution panel
+  const isCurrentlyRunning = executionState.isRunning && executionState.chunkId;
+  const displayChunk = isCurrentlyRunning
     ? chunks.find(c => c.id === executionState.chunkId) || selectedChunk
     : selectedChunk;
+
+  // Use execution state for running chunks, history for completed ones
+  const displayToolCalls = isCurrentlyRunning
+    ? executionState.toolCalls
+    : (chunkHistory?.toolCalls || []);
+  const displayOutput = isCurrentlyRunning
+    ? executionState.output
+    : (chunkHistory?.chunk.output || '');
+  // Show execution state error first (for connection errors), then history error
+  const displayError = executionState.error
+    || (isCurrentlyRunning ? null : (chunkHistory?.chunk.error || null));
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -213,7 +250,9 @@ export default function ProjectWorkspace() {
               chunks={chunks}
               onChunksChange={handleChunksChange}
               onRunChunk={handleRunChunk}
+              onSelectChunk={handleSelectChunk}
               runningChunkId={executionState.chunkId}
+              selectedChunkId={selectedChunk?.id}
             />
           </div>
         </div>
@@ -222,10 +261,10 @@ export default function ProjectWorkspace() {
         <div className="w-1/2 flex flex-col min-h-0">
           <div className="flex-1 p-6 overflow-auto">
             <ExecutionPanel
-              chunk={executingChunk || null}
-              toolCalls={executionState.toolCalls}
-              output={executionState.output}
-              error={executionState.error}
+              chunk={displayChunk || null}
+              toolCalls={displayToolCalls}
+              output={displayOutput}
+              error={displayError}
               isRunning={executionState.isRunning}
               startedAt={executionState.startedAt}
               onCancel={executionState.isRunning ? handleCancelExecution : undefined}

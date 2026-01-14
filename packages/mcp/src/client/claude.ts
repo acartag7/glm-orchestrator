@@ -17,7 +17,7 @@ import type {
   TokenUsage,
 } from "@glm/shared";
 
-const DEFAULT_MODEL = "claude-opus-4-5-20250514";
+const DEFAULT_MODEL = "claude-opus-4-5-20251101";
 const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes
 
 export interface ClaudeClientOptions {
@@ -289,6 +289,16 @@ export class ClaudeClient {
             handlers.onThinking?.();
           } else if (delta?.type === "input_json_delta") {
             // Tool input being streamed - could track if needed
+          }
+        } else if (!subtype) {
+          // Full assistant message (non-streaming) - extract text from content array
+          const messageContent = (event as any).message?.content;
+          if (Array.isArray(messageContent)) {
+            for (const block of messageContent) {
+              if (block.type === "text" && block.text) {
+                handlers.onText?.(block.text);
+              }
+            }
           }
         }
         break;

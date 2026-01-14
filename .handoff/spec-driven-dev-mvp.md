@@ -10,9 +10,9 @@ A web-based tool where you write specs with AI assistance, break them into chunk
 
 ## Current Progress
 
-**Status:** Day 3 - Complete
+**Status:** Day 4-5 - Complete (MVP DONE!)
 **Last Updated:** 2025-01-14
-**Next Task:** Day 4 - Opus Integration & Polish
+**Next Task:** Polish & Documentation
 
 ### Completed
 - [x] Project structure (monorepo with pnpm + turborepo)
@@ -45,9 +45,18 @@ A web-based tool where you write specs with AI assistance, break them into chunk
   - [x] ExecutionPanel component with live tool calls
   - [x] Sequential execution (one chunk at a time)
   - [x] Timeout handling (5 min default)
+- [x] **Day 4-5: Test & Fix**
+  - [x] Fixed Opus model name (claude-opus-4-5-20251101)
+  - [x] Fixed ClaudeClient text extraction (handle non-streaming messages)
+  - [x] Fixed tool calls not showing (session ID vs directory matching)
+  - [x] Fixed SSE race condition (event buffering for late subscribers)
+  - [x] Added execution history persistence (view completed chunk tool calls)
+  - [x] Added chunk selection UI for history viewing
+  - [x] Added OpenCode connection error handling with helpful message
+  - [x] End-to-end flow tested: Create project → Write spec → Refine with Opus → Create chunks → Execute → Complete
 
 ### In Progress
-- [ ] **Day 4: Opus Integration & Polish** ← START HERE
+_None - MVP Complete!_
 
 ### Blockers / Notes
 _None_
@@ -338,17 +347,17 @@ GET    /api/events/[chunkId]      # SSE stream for specific chunk
 - [x] Tool call streaming via SSE
 - [x] Status updates (pending → running → completed/failed/cancelled)
 
-### Day 4: Opus Integration & Polish
-- [ ] "Ask Opus to refine" endpoint (integrates ClaudeClient)
-- [ ] Loading states, error handling
-- [ ] Basic styling polish
-- [ ] Test end-to-end flow
+### Day 4: Opus Integration & Polish ✅
+- [x] "Ask Opus to refine" endpoint (integrates ClaudeClient)
+- [x] Loading states, error handling
+- [x] Basic styling polish
+- [x] Test end-to-end flow
 
-### Day 5: Buffer & Improvements
-- [ ] Bug fixes from testing
-- [ ] UX improvements
-- [ ] Chunk retry functionality
-- [ ] Basic persistence/recovery
+### Day 5: Bug Fixes & Improvements ✅
+- [x] Bug fixes from testing (Opus model, text extraction, tool calls)
+- [x] UX improvements (chunk selection, history viewing)
+- [x] Chunk retry functionality (re-run failed chunks)
+- [x] Execution history persistence
 
 ---
 

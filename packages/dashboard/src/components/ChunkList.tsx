@@ -10,7 +10,9 @@ interface ChunkListProps {
   chunks: Chunk[];
   onChunksChange?: (chunks: Chunk[]) => void;
   onRunChunk?: (chunk: Chunk) => void;
+  onSelectChunk?: (chunk: Chunk) => void;
   runningChunkId?: string | null;
+  selectedChunkId?: string;
 }
 
 export default function ChunkList({
@@ -18,7 +20,9 @@ export default function ChunkList({
   chunks,
   onChunksChange,
   onRunChunk,
+  onSelectChunk,
   runningChunkId,
+  selectedChunkId,
 }: ChunkListProps) {
   const [editingChunk, setEditingChunk] = useState<Chunk | null>(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -169,11 +173,13 @@ export default function ChunkList({
               isFirst={index === 0}
               isLast={index === chunks.length - 1}
               isRunning={runningChunkId === chunk.id}
+              isSelected={selectedChunkId === chunk.id}
               onEdit={() => setEditingChunk(chunk)}
               onDelete={() => handleDelete(chunk)}
               onMoveUp={() => handleMove(chunk, 'up')}
               onMoveDown={() => handleMove(chunk, 'down')}
               onRun={() => onRunChunk?.(chunk)}
+              onClick={() => onSelectChunk?.(chunk)}
             />
           ))
         )}
