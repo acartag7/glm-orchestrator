@@ -1,0 +1,57 @@
+name: NPM Token Expiry Reminder
+
+on:
+  schedule:
+    # Run every Monday at 9am UTC, starting March 2026
+    - cron: '0 9 * * 1'
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  check-and-remind:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check token expiry and send reminder
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          # Token expires April 14, 2026
+          TOKEN_EXPIRY: '2026-04-14'
+        run: |
+          # Calculate days until expiry
+          expiry_epoch=$(date -d "$TOKEN_EXPIRY" +%s)
+          today_epoch=$(date +%s)
+          days_remaining=$(( (expiry_epoch - today_epoch) / 86400 ))
+
+          echo "Days until NPM token expires: $days_remaining"
+
+          # Send reminder if within 30 days
+          if [ $days_remaining -le 30 ] && [ $days_remaining -gt 0 ]; then
+            echo "Sending reminder email..."
+
+            curl -X POST 'https://api.resend.com/emails' \
+              -H "Authorization: Bearer $RESEND_API_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "{
+                \"from\": \"GLM Orchestrator <onboarding@resend.dev>\",
+                \"to\": [\"$NOTIFY_EMAIL\"],
+                \"subject\": \"⚠️ NPM Token Expires in $days_remaining days\",
+                \"html\": \"<h2>NPM Token Expiry Reminder</h2><p>Your NPM token for <strong>glm-orchestrator</strong> expires on <strong>$TOKEN_EXPIRY</strong> ($days_remaining days remaining).</p><p><strong>Action Required:</strong></p><ol><li>Go to <a href='https://www.npmjs.com/settings/tokens'>npmjs.com tokens</a></li><li>Generate a new Granular Access Token</li><li>Update the <code>NPM_TOKEN</code> secret in <a href='https://github.com/acartag7/glm-orchestrator/settings/secrets/actions'>GitHub repo settings</a></li><li>Update the <code>TOKEN_EXPIRY</code> date in <code>.github/workflows/token-reminder.yml</code></li></ol>\"
+              }"
+
+            echo "Reminder sent!"
+          elif [ $days_remaining -le 0 ]; then
+            echo "TOKEN HAS EXPIRED! Sending urgent notification..."
+
+            curl -X POST 'https://api.resend.com/emails' \
+              -H "Authorization: Bearer $RESEND_API_KEY" \
+              -H 'Content-Type: application/json' \
+              -d "{
+                \"from\": \"GLM Orchestrator <onboarding@resend.dev>\",
+                \"to\": [\"$NOTIFY_EMAIL\"],
+                \"subject\": \"🚨 URGENT: NPM Token Has EXPIRED\",
+                \"html\": \"<h2>NPM Token Has Expired!</h2><p>Your NPM token for <strong>glm-orchestrator</strong> expired on <strong>$TOKEN_EXPIRY</strong>.</p><p>Publishing to npm will fail until you renew it.</p><p><strong>Action Required Immediately:</strong></p><ol><li>Go to <a href='https://www.npmjs.com/settings/tokens'>npmjs.com tokens</a></li><li>Generate a new Granular Access Token</li><li>Update the <code>NPM_TOKEN</code> secret in <a href='https://github.com/acartag7/glm-orchestrator/settings/secrets/actions'>GitHub repo settings</a></li><li>Update the <code>TOKEN_EXPIRY</code> date in <code>.github/workflows/token-reminder.yml</code></li></ol>\"
+              }"
+          else
+            echo "Token still valid for $days_remaining days. No reminder needed."
+          fi
