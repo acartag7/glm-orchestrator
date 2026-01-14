@@ -190,7 +190,7 @@ All events written to SQLite → Dashboard polls/reads
 
 ### Key Components
 
-#### 1. Opencode Client (`src/client/opencode.ts`)
+#### 1. Opencode Client (`src/client/opencode.ts`) - For GLM
 
 Typed client for opencode's HTTP API:
 
@@ -224,7 +224,44 @@ interface PromptOptions {
 }
 ```
 
-#### 2. Event Handler (`src/client/events.ts`)
+#### 2. Claude Client (`src/client/claude.ts`) - For Opus
+
+Typed client for Claude CLI stream-json:
+
+```typescript
+interface ClaudeClient {
+  execute(prompt: string, opts?: ClaudeOptions): AsyncGenerator<ClaudeEvent>;
+}
+
+interface ClaudeOptions {
+  workingDirectory?: string;
+  model?: string;  // defaults to claude-opus-4-5-20250514
+}
+
+type ClaudeEvent =
+  | { type: "system"; subtype: "init"; session_id: string; tools: string[] }
+  | { type: "assistant"; message: { content: Array<ToolUse | TextContent> } }
+  | { type: "user"; message: { content: Array<ToolResult> } }
+  | { type: "result"; subtype: "success" | "error"; total_cost_usd: number };
+
+interface ToolUse {
+  type: "tool_use";
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+interface ToolResult {
+  type: "tool_result";
+  tool_use_id: string;
+  content: string;
+}
+
+// Implementation: spawn claude -p --output-format stream-json
+// Parse NDJSON from stdout
+```
+
+#### 3. Event Handler (`src/client/events.ts`)
 
 Process SSE events and write to database:
 
@@ -461,12 +498,31 @@ This tool was useless with its generic fallback.
 - Use for: file creation, code implementation, bug fixes
 
 ### Claude Opus 4.5 (Planning/Review)
+
+**Two providers supported:**
+
+1. **Claude CLI** (Personal Max subscription - works anywhere):
+```bash
+claude -p "prompt" --output-format stream-json --model claude-opus-4-5-20250514
+```
+
+2. **Opencode github-copilot** (Work account - work only):
 ```typescript
 {
   providerID: "github-copilot",
   modelID: "claude-opus-4.5"
 }
 ```
+
+**Claude CLI stream-json format (validated in POC):**
+```json
+{"type":"system","subtype":"init","session_id":"...","tools":[...]}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{...}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"..."}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+{"type":"result","subtype":"success","total_cost_usd":0.039,"usage":{...}}
+```
+
 - Better reasoning
 - Better at architecture decisions
 - Use for: spec writing, code review, planning
@@ -775,7 +831,9 @@ src/utils/glm.ts        # After migration complete
 
 ## Appendix: POC Results
 
-From `/Users/acartagena/project/orchestrator/poc/opencode-client.ts`:
+### GLM via Opencode HTTP API
+
+From `poc/opencode-client.ts`:
 
 ```
 ✅ Opencode server healthy: { healthy: true, version: '1.1.10' }
@@ -790,4 +848,25 @@ From `/Users/acartagena/project/orchestrator/poc/opencode-client.ts`:
 ✅ Session idle (complete)
 ```
 
-Full POC code available at: `poc/opencode-client.ts`
+### Opus via Claude CLI stream-json
+
+From `poc/claude-cli-opus.ts` (validated manually):
+
+```
+{"type":"system","subtype":"init","session_id":"f8816e1b-...","tools":["Read","Edit",...]}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"...package.json"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"...file content..."}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"The version is **1.0.0**."}]}}
+{"type":"result","subtype":"success","total_cost_usd":0.039,"duration_ms":5834}
+```
+
+**Both approaches provide:**
+- Real-time streaming events
+- Tool call visibility (name, inputs, outputs)
+- Cost tracking
+- Session management
+
+### POC Files
+- `poc/opencode-client.ts` - GLM via opencode HTTP API + SSE
+- `poc/claude-cli-opus.ts` - Opus via Claude CLI stream-json
+- `poc/opencode-opus.ts` - Opus via opencode github-copilot (for work)
