@@ -1,23 +1,32 @@
-import { executeGLM } from "../utils/glm.js";
+import { executeGLM, GLMOptions } from "../utils/glm.js";
 import { getProjectFiles } from "../utils/files.js";
+import { validateWorkingDirectory } from "../utils/paths.js";
 import { readFile } from "fs/promises";
+import { join } from "path";
 
 export async function delegateToGLM(
   task: string,
   workingDirectory: string,
   timeoutMs: number = 180000
 ) {
+  validateWorkingDirectory(workingDirectory);
+
   // Simple, direct prompt - let GLM use its tools
   const prompt = `${task}
 
 Do this now. Create the files.`;
 
-  const { output, duration } = await executeGLM(prompt, workingDirectory, timeoutMs);
+  const progressFile = join(workingDirectory, ".handoff", `progress-${Date.now()}.log`);
+
+  const { output, duration } = await executeGLM(prompt, workingDirectory, {
+    timeoutMs,
+    progressFile,
+  });
 
   return {
     content: [{
       type: "text" as const,
-      text: `GLM completed in ${Math.round(duration / 1000)}s:\n\n${output}`
+      text: `GLM completed in ${Math.round(duration / 1000)}s:\n\n${output}\n\n📋 Progress log: ${progressFile}`
     }],
   };
 }
@@ -28,6 +37,8 @@ export async function delegateChunksToGLM(
   specFile?: string,
   timeoutPerChunk: number = 180000
 ) {
+  validateWorkingDirectory(workingDirectory);
+
   let specContent: string | undefined;
   if (specFile) {
     try {
@@ -61,8 +72,13 @@ ${chunk}
 Do this now. Create the files.`;
 
     try {
-      console.error(`[Orchestrator] ⏳ Chunk ${i + 1}/${chunks.length} sending...`);
-      const { output, duration } = await executeGLM(prompt, workingDirectory, timeoutPerChunk);
+      console.error(`\n[Orchestrator] ⏳ Chunk ${i + 1}/${chunks.length} sending...`);
+      const progressFile = join(workingDirectory, ".handoff", `chunk-${i + 1}-progress.log`);
+
+      const { output, duration } = await executeGLM(prompt, workingDirectory, {
+        timeoutMs: timeoutPerChunk,
+        progressFile,
+      });
       console.error(`[Orchestrator] ✅ Chunk ${i + 1} done in ${Math.round(duration/1000)}s`);
 
       results.push({

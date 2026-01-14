@@ -8,11 +8,19 @@ import {
 import { toolDefinitions } from "./tools/definitions.js";
 import { delegateToGLM, delegateChunksToGLM } from "./tools/delegate.js";
 import { splitSpecIntoChunks, writeSpec, writeReview } from "./tools/spec.js";
+import { cancelGLM, getActiveTaskIds } from "./utils/glm.js";
 import {
   startFeatureWorkflow,
   runImplementationStage,
   visualizeWorkflowTool,
 } from "./tools/workflow.js";
+import {
+  DelegateInputSchema,
+  ChunksInputSchema,
+  WorkflowInputSchema,
+  ImplementationInputSchema,
+} from "./utils/validation.js";
+import { registerServer, startHeartbeat } from "./lib/db.js";
 
 const server = new Server(
   { name: "glm-orchestrator", version: "3.0.0" },
@@ -29,21 +37,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "delegate_to_glm": {
-        const { task, workingDirectory, timeoutMs } = args as {
-          task: string;
-          workingDirectory: string;
-          timeoutMs?: number;
-        };
+        const parsed = DelegateInputSchema.safeParse(args);
+        if (!parsed.success) {
+          return {
+            content: [{ type: "text", text: `Validation error: ${parsed.error}` }],
+            isError: true,
+          };
+        }
+        const { task, workingDirectory, timeoutMs } = parsed.data;
         return delegateToGLM(task, workingDirectory, timeoutMs);
       }
 
       case "delegate_chunks_to_glm": {
-        const { chunks, workingDirectory, specFile, timeoutPerChunk } = args as {
-          chunks: string[];
-          workingDirectory: string;
-          specFile?: string;
-          timeoutPerChunk?: number;
-        };
+        const parsed = ChunksInputSchema.safeParse(args);
+        if (!parsed.success) {
+          return {
+            content: [{ type: "text", text: `Validation error: ${parsed.error}` }],
+            isError: true,
+          };
+        }
+        const { chunks, workingDirectory, specFile, timeoutPerChunk } = parsed.data;
         return delegateChunksToGLM(chunks, workingDirectory, specFile, timeoutPerChunk);
       }
 
@@ -70,31 +83,70 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "start_feature_workflow": {
-        const { featureName, workingDirectory, specFile } = args as {
-          featureName: string;
-          workingDirectory: string;
-          specFile?: string;
-        };
+        const parsed = WorkflowInputSchema.safeParse(args);
+        if (!parsed.success) {
+          return {
+            content: [{ type: "text", text: `Validation error: ${parsed.error}` }],
+            isError: true,
+          };
+        }
+        const { featureName, workingDirectory, specFile } = parsed.data;
         return startFeatureWorkflow(featureName, workingDirectory, specFile);
       }
 
       case "run_implementation_stage": {
-        const { workingDirectory, specFile, tasks } = args as {
-          workingDirectory: string;
-          specFile?: string;
-          tasks?: Array<{
-            id: string;
-            name: string;
-            description: string;
-            dependsOn?: string[];
-          }>;
-        };
+        const parsed = ImplementationInputSchema.safeParse(args);
+        if (!parsed.success) {
+          return {
+            content: [{ type: "text", text: `Validation error: ${parsed.error}` }],
+            isError: true,
+          };
+        }
+        const { workingDirectory, specFile, customTasks: tasks } = parsed.data;
         return runImplementationStage(workingDirectory, specFile, tasks);
       }
 
       case "visualize_workflow": {
         const { workflowId } = args as { workflowId: string };
         return visualizeWorkflowTool(workflowId);
+      }
+
+      case "list_active_glm_tasks": {
+        const taskIds = getActiveTaskIds();
+        if (taskIds.length === 0) {
+          return {
+            content: [{
+              type: "text",
+              text: "No active GLM tasks running."
+            }],
+          };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `**Active GLM Tasks (${taskIds.length}):**\n\n${taskIds.map(id => `- \`${id}\``).join("\n")}\n\nUse cancel_glm_task with a task ID to stop it.`
+          }],
+        };
+      }
+
+      case "cancel_glm_task": {
+        const { taskId } = args as { taskId: string };
+        const cancelled = cancelGLM(taskId);
+        if (cancelled) {
+          return {
+            content: [{
+              type: "text",
+              text: `✅ Task \`${taskId}\` has been cancelled.`
+            }],
+          };
+        }
+        return {
+          content: [{
+            type: "text",
+            text: `❌ Task \`${taskId}\` not found. It may have already completed.\n\nUse list_active_glm_tasks to see running tasks.`
+          }],
+          isError: true,
+        };
       }
 
       default:
@@ -109,9 +161,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+  // Register this server instance with the dashboard DB
+  const serverId = registerServer(process.cwd());
+  startHeartbeat();
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("GLM Orchestrator MCP server v3.0 running");
+  console.error(`GLM Orchestrator MCP server v3.0 running (${serverId})`);
 }
 
 main().catch(console.error);

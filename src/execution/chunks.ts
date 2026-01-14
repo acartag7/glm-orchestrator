@@ -33,7 +33,7 @@ Steps:
       const { output, duration } = await executeGLM(
         promptWithContext,
         workingDirectory,
-        timeoutPerChunk
+        { timeoutMs: timeoutPerChunk }
       );
 
       results.push({

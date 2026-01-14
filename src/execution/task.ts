@@ -22,5 +22,5 @@ ${task.description}
 
 Do this now. Create the files.`;
 
-  return executeGLM(prompt, workflow.workingDirectory, 180000);
+  return executeGLM(prompt, workflow.workingDirectory, { timeoutMs: 180000 });
 }

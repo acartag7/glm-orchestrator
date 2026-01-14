@@ -231,4 +231,33 @@ Provide either a specFile to auto-generate tasks, or custom tasks array.`,
       required: ["workflowId"],
     },
   },
+  {
+    name: "list_active_glm_tasks",
+    description: `List all currently running GLM tasks.
+
+Returns task IDs that can be used with cancel_glm_task to stop a running task.
+Use this to check progress or find tasks to cancel.`,
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "cancel_glm_task",
+    description: `Cancel a running GLM task by its ID.
+
+Use list_active_glm_tasks to get the task ID.
+The task will be terminated gracefully (SIGTERM, then SIGKILL after 2s).`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        taskId: {
+          type: "string",
+          description: "The task ID to cancel (from list_active_glm_tasks)",
+        },
+      },
+      required: ["taskId"],
+    },
+  },
 ];

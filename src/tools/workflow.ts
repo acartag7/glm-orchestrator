@@ -12,12 +12,40 @@ import {
 } from "../workflow.js";
 import { executeStage } from "../execution/stage.js";
 
-// In-memory workflow storage
-const activeWorkflows = new Map<string, Workflow>();
+const MAX_WORKFLOWS = 100;
+const WORKFLOW_TTL_MS = 24 * 60 * 60 * 1000;
+
+type StoredWorkflow = {
+  workflow: Workflow;
+  createdAt: number;
+};
+
+const activeWorkflows = new Map<string, StoredWorkflow>();
+
+function cleanupOldWorkflows() {
+  const now = Date.now();
+  const entries = Array.from(activeWorkflows.entries());
+
+  entries.forEach(([id, stored]) => {
+    const age = now - stored.createdAt;
+    if (age > WORKFLOW_TTL_MS) {
+      activeWorkflows.delete(id);
+    }
+  });
+
+  if (activeWorkflows.size > MAX_WORKFLOWS) {
+    const sortedEntries = entries
+      .sort((a, b) => a[1].createdAt - b[1].createdAt);
+    const toRemove = sortedEntries.slice(0, activeWorkflows.size - MAX_WORKFLOWS);
+    toRemove.forEach(([id]) => activeWorkflows.delete(id));
+  }
+}
 
 export function getWorkflow(id: string): Workflow | undefined {
-  return activeWorkflows.get(id);
+  return activeWorkflows.get(id)?.workflow;
 }
+
+
 
 export function getAllWorkflowIds(): string[] {
   return Array.from(activeWorkflows.keys());
@@ -29,7 +57,8 @@ export async function startFeatureWorkflow(
   specFile?: string
 ) {
   const workflow = createFeatureWorkflow(featureName, workingDirectory, specFile);
-  activeWorkflows.set(workflow.id, workflow);
+  cleanupOldWorkflows();
+  activeWorkflows.set(workflow.id, { workflow, createdAt: Date.now() });
 
   const handoffDir = join(workingDirectory, ".handoff");
   if (!existsSync(handoffDir)) {
@@ -203,8 +232,8 @@ export async function runImplementationStage(
 }
 
 export function visualizeWorkflowTool(workflowId: string) {
-  const workflow = activeWorkflows.get(workflowId);
-  if (!workflow) {
+  const stored = activeWorkflows.get(workflowId);
+  if (!stored) {
     return {
       content: [
         {
@@ -215,7 +244,7 @@ export function visualizeWorkflowTool(workflowId: string) {
     };
   }
 
-  const visualization = visualizeWorkflow(workflow);
+  const visualization = visualizeWorkflow(stored.workflow);
   return {
     content: [{ type: "text" as const, text: visualization }],
   };

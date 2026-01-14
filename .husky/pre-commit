@@ -14,6 +14,16 @@ FOUND_SECRETS=0
 
 for FILE in $STAGED_FILES; do
   if [ -f "$FILE" ]; then
+    # Skip the pre-commit hook itself (contains patterns)
+    if [ "$FILE" = ".husky/pre-commit" ]; then
+      continue
+    fi
+
+    # Skip binary files
+    if file "$FILE" | grep -q binary; then
+      continue
+    fi
+
     # npm tokens
     if grep -qE 'npm_[a-zA-Z0-9]{30,}' "$FILE" 2>/dev/null; then
       echo "❌ NPM token found in $FILE"
@@ -32,8 +42,32 @@ for FILE in $STAGED_FILES; do
       FOUND_SECRETS=1
     fi
 
+    # OpenAI API keys
+    if grep -qE 'sk-[a-zA-Z0-9]{40,}' "$FILE" 2>/dev/null; then
+      echo "❌ OpenAI API key found in $FILE"
+      FOUND_SECRETS=1
+    fi
+
+    # AWS access keys
+    if grep -qE 'AKIA[0-9A-Z]{16}' "$FILE" 2>/dev/null; then
+      echo "❌ AWS access key found in $FILE"
+      FOUND_SECRETS=1
+    fi
+
+    # GitHub tokens
+    if grep -qE 'gh[pousr]_[A-Za-z0-9_]{36,}' "$FILE" 2>/dev/null; then
+      echo "❌ GitHub token found in $FILE"
+      FOUND_SECRETS=1
+    fi
+
+    # Private key detection
+    if grep -qE 'BEGIN.*PRIVATE KEY' "$FILE" 2>/dev/null; then
+      echo "❌ Private key found in $FILE"
+      FOUND_SECRETS=1
+    fi
+
     # Generic API key assignments
-    if grep -qiE '(API_KEY|AUTH_TOKEN|SECRET_KEY|PRIVATE_KEY)\s*=\s*["\x27][a-zA-Z0-9_-]{20,}["\x27]' "$FILE" 2>/dev/null; then
+    if grep -qiE '(API_KEY|AUTH_TOKEN|SECRET_KEY)\s*=\s*["\x27][a-zA-Z0-9_-]{20,}["\x27]' "$FILE" 2>/dev/null; then
       echo "❌ Hardcoded credential found in $FILE"
       FOUND_SECRETS=1
     fi
@@ -44,10 +78,7 @@ if [ $FOUND_SECRETS -eq 1 ]; then
   echo ""
   echo "⛔ Commit blocked: Secrets detected!"
   echo ""
-  echo "Options:"
-  echo "  1. Remove the secret and use environment variables"
-  echo "  2. Add file to .gitignore"
-  echo "  3. Skip check: git commit --no-verify (use carefully!)"
+  echo "Please remove the secret and use environment variables or add file to .gitignore"
   echo ""
   exit 1
 fi
