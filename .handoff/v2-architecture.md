@@ -6,6 +6,108 @@ Refactor the GLM Orchestrator from a process-spawning wrapper to a proper client
 
 ---
 
+## Repository Structure: Monorepo
+
+Consolidate `glm-orchestrator` and `glm-orchestrator-dashboard` into a single monorepo:
+
+```
+glm-orchestrator/
+├── packages/
+│   ├── mcp/                    # MCP server (npm: glm-orchestrator)
+│   │   ├── src/
+│   │   │   ├── client/         # Opencode HTTP client
+│   │   │   ├── execution/      # Task execution
+│   │   │   ├── prompts/        # System prompts
+│   │   │   ├── tools/          # MCP tool definitions
+│   │   │   └── index.ts
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   │
+│   ├── dashboard/              # Next.js web app
+│   │   ├── src/
+│   │   │   ├── app/            # Next.js app router
+│   │   │   ├── components/     # React components
+│   │   │   ├── hooks/          # useOpencodeEvents, etc.
+│   │   │   └── lib/            # Utilities
+│   │   ├── package.json
+│   │   └── next.config.js
+│   │
+│   └── shared/                 # Shared types & utilities
+│       ├── src/
+│       │   ├── types.ts        # Event types, DB schema types
+│       │   ├── schema.ts       # SQLite schema definitions
+│       │   └── index.ts
+│       └── package.json
+│
+├── .handoff/                   # Specs & documentation
+├── poc/                        # Proof of concept scripts
+├── package.json                # Root workspace config
+├── pnpm-workspace.yaml
+├── turbo.json                  # Turborepo config
+└── tsconfig.base.json          # Shared TS config
+```
+
+### Workspace Configuration
+
+**pnpm-workspace.yaml:**
+```yaml
+packages:
+  - 'packages/*'
+```
+
+**Root package.json:**
+```json
+{
+  "name": "glm-orchestrator-monorepo",
+  "private": true,
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "dev:mcp": "pnpm --filter @glm/mcp dev",
+    "dev:dashboard": "pnpm --filter @glm/dashboard dev",
+    "lint": "turbo lint",
+    "test": "turbo test"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "typescript": "^5.7.0"
+  }
+}
+```
+
+**turbo.json:**
+```json
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
+```
+
+### Package Names
+- `@glm/mcp` → publishes as `glm-orchestrator` on npm
+- `@glm/dashboard` → not published (web app)
+- `@glm/shared` → internal package, not published
+
+### Migration Steps
+1. Create new monorepo structure
+2. Move orchestrator code to `packages/mcp/`
+3. Move dashboard code to `packages/dashboard/`
+4. Extract shared types to `packages/shared/`
+5. Update imports to use workspace packages
+6. Update CI/CD for monorepo (turbo)
+7. Update npm publish config for `@glm/mcp`
+
+---
+
 ## Current Problems (v1)
 
 ### 1. Black Box Execution
