@@ -1,3 +1,10 @@
+/**
+ * GLM Orchestrator MCP Server v2
+ *
+ * Delegates coding tasks to GLM-4.7 (via opencode HTTP API)
+ * and planning/review tasks to Opus (via Claude CLI)
+ */
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -6,8 +13,8 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import { toolDefinitions } from "./tools/definitions.js";
-import { delegateToGLM, delegateChunksToGLM } from "./tools/delegate.js";
-import { splitSpecIntoChunks, writeSpec, writeReview } from "./tools/spec.js";
+import { delegateToGLM, delegateToOpus, delegateChunksToGLM } from "./tools/delegate.js";
+import { writeSpec, writeReview } from "./tools/spec.js";
 import { cancelGLM, getActiveTaskIds } from "./utils/glm.js";
 import {
   startFeatureWorkflow,
@@ -16,6 +23,7 @@ import {
 } from "./tools/workflow.js";
 import {
   DelegateInputSchema,
+  DelegateOpusInputSchema,
   ChunksInputSchema,
   WorkflowInputSchema,
   ImplementationInputSchema,
@@ -23,7 +31,7 @@ import {
 import { registerServer, startHeartbeat } from "./lib/db.js";
 
 const server = new Server(
-  { name: "glm-orchestrator", version: "3.0.0" },
+  { name: "glm-orchestrator", version: "4.0.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -44,8 +52,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             isError: true,
           };
         }
-        const { task, workingDirectory, timeoutMs } = parsed.data;
-        return delegateToGLM(task, workingDirectory, timeoutMs);
+        const { task, workingDirectory, systemPrompt, timeoutMs } = parsed.data;
+        return delegateToGLM(task, workingDirectory, timeoutMs, systemPrompt);
+      }
+
+      case "delegate_to_opus": {
+        const parsed = DelegateOpusInputSchema.safeParse(args);
+        if (!parsed.success) {
+          return {
+            content: [{ type: "text", text: `Validation error: ${parsed.error}` }],
+            isError: true,
+          };
+        }
+        const { task, workingDirectory, taskType, timeoutMs } = parsed.data;
+        return delegateToOpus(task, workingDirectory, taskType, timeoutMs);
       }
 
       case "delegate_chunks_to_glm": {
@@ -58,11 +78,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         const { chunks, workingDirectory, specFile, timeoutPerChunk } = parsed.data;
         return delegateChunksToGLM(chunks, workingDirectory, specFile, timeoutPerChunk);
-      }
-
-      case "split_spec_into_chunks": {
-        const { specFile } = args as { specFile: string };
-        return splitSpecIntoChunks(specFile);
       }
 
       case "write_spec": {
@@ -167,7 +182,7 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`GLM Orchestrator MCP server v3.0 running (${serverId})`);
+  console.error(`GLM Orchestrator MCP server v4.0 running (${serverId})`);
 }
 
 main().catch(console.error);

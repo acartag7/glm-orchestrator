@@ -1,57 +1,22 @@
 {
-  "name": "glm-orchestrator",
-  "version": "1.0.0",
-  "description": "MCP server that lets Claude delegate coding tasks to GLM-4.7 via OpenCode",
-  "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "glm-orchestrator": "dist/index.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
+  "name": "glm-orchestrator-monorepo",
+  "private": true,
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
-    "prepublishOnly": "pnpm build",
-    "test": "node -e \"const { executeGLM } = require('./dist/utils/glm.js'); executeGLM('echo test', process.cwd(), 10000).then(() => console.log('OK')).catch(e => { console.error(e); process.exit(1); })\"",
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "dev:mcp": "pnpm --filter @glm/mcp dev",
+    "dev:dashboard": "pnpm --filter @glm/dashboard dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
     "prepare": "husky"
   },
-  "keywords": [
-    "mcp",
-    "claude",
-    "glm",
-    "opencode",
-    "ai",
-    "orchestrator",
-    "model-context-protocol"
-  ],
-  "author": "Arnold Cartagena",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/acartag7/glm-orchestrator.git"
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.0"
   },
-  "bugs": {
-    "url": "https://github.com/acartag7/glm-orchestrator/issues"
-  },
-  "homepage": "https://github.com/acartag7/glm-orchestrator#readme",
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "better-sqlite3": "^12.6.0",
-    "zod": "^4.3.5"
-  },
-  "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^22.10.0",
-    "husky": "^9.1.7",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
-  }
+  "packageManager": "pnpm@9.15.4"
 }

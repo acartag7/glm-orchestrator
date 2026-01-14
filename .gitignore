@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+.next/
+.turbo/
 
 # IDE
 .idea/
@@ -27,9 +29,6 @@ test-*.txt
 .env
 .env.local
 .env.*.local
-
-# Handoff directory (created during usage)
-.handoff/
 
 # GLM temp files
 .glm-*

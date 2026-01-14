@@ -3,16 +3,26 @@ import { z } from "zod";
 export const DelegateInputSchema = z.object({
   task: z.string().min(1).max(50000),
   workingDirectory: z.string(),
+  systemPrompt: z.string().optional(),
   timeoutMs: z.number().int().min(1000).max(600000).default(180000)
 });
 
 export type DelegateInput = z.infer<typeof DelegateInputSchema>;
 
+export const DelegateOpusInputSchema = z.object({
+  task: z.string().min(1).max(50000),
+  workingDirectory: z.string(),
+  taskType: z.enum(["plan", "review", "security-review", "spec"]).default("plan"),
+  timeoutMs: z.number().int().min(1000).max(600000).default(300000)
+});
+
+export type DelegateOpusInput = z.infer<typeof DelegateOpusInputSchema>;
+
 export const ChunksInputSchema = z.object({
   chunks: z.array(z.string().min(1).max(50000)).min(1).max(20),
   workingDirectory: z.string(),
   specFile: z.string().optional(),
-  timeoutPerChunk: z.number().int().min(1000).max(600000)
+  timeoutPerChunk: z.number().int().min(1000).max(600000).default(180000)
 });
 
 export type ChunksInput = z.infer<typeof ChunksInputSchema>;
