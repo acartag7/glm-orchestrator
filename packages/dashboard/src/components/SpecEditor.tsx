@@ -18,14 +18,6 @@ export default function SpecEditor({ spec, projectId, onUpdate }: SpecEditorProp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-resize textarea
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.max(200, textareaRef.current.scrollHeight)}px`;
-    }
-  }, [content]);
-
   // Save spec
   const saveSpec = useCallback(async (newContent: string) => {
     try {
@@ -189,7 +181,7 @@ export default function SpecEditor({ spec, projectId, onUpdate }: SpecEditorProp
         )}
 
         {/* Editor */}
-        <div className="flex-1 min-h-0 p-3">
+        <div className="flex-1 min-h-0 p-3 overflow-hidden">
           <textarea
             ref={textareaRef}
             value={content}
@@ -206,7 +198,7 @@ Describe what this feature does.
 ## Acceptance Criteria
 - [ ] Criteria 1
 - [ ] Criteria 2"
-            className="w-full h-full min-h-[200px] bg-transparent text-sm text-neutral-300 font-mono placeholder-neutral-700 focus:outline-none resize-none"
+            className="w-full h-full min-h-[200px] bg-transparent text-sm text-neutral-300 font-mono placeholder-neutral-700 focus:outline-none resize-none overflow-y-auto"
             disabled={isRefining}
           />
         </div>

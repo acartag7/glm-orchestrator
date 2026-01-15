@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import type { Project, Spec, Chunk, ChunkToolCall } from '@glm/shared';
 import SpecEditor from '@/components/SpecEditor';
 import ChunkList from '@/components/ChunkList';
 import ExecutionPanel from '@/components/ExecutionPanel';
+import ResizeHandle from '@/components/ResizeHandle';
 import { useExecution } from '@/hooks/useExecution';
 
 interface ProjectData {
@@ -30,7 +31,29 @@ export default function ProjectWorkspace() {
   const [selectedChunk, setSelectedChunk] = useState<Chunk | null>(null);
   const [chunkHistory, setChunkHistory] = useState<ChunkHistory | null>(null);
 
+  // Panel sizes (in percentage for horizontal, pixels for vertical)
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [specPanelHeight, setSpecPanelHeight] = useState(60); // percentage of left column
+  const containerRef = useRef<HTMLDivElement>(null);
+  const leftColumnRef = useRef<HTMLDivElement>(null);
+
   const { state: executionState, runChunk, abortChunk } = useExecution();
+
+  // Handle horizontal resize (left/right columns)
+  const handleHorizontalResize = useCallback((delta: number) => {
+    if (!containerRef.current) return;
+    const containerWidth = containerRef.current.offsetWidth;
+    const deltaPercent = (delta / containerWidth) * 100;
+    setLeftPanelWidth(prev => Math.min(80, Math.max(20, prev + deltaPercent)));
+  }, []);
+
+  // Handle vertical resize (spec/chunks in left column)
+  const handleVerticalResize = useCallback((delta: number) => {
+    if (!leftColumnRef.current) return;
+    const columnHeight = leftColumnRef.current.offsetHeight;
+    const deltaPercent = (delta / columnHeight) * 100;
+    setSpecPanelHeight(prev => Math.min(80, Math.max(20, prev + deltaPercent)));
+  }, []);
 
   // Fetch project and chunks
   useEffect(() => {
@@ -228,11 +251,18 @@ export default function ProjectWorkspace() {
       </header>
 
       {/* Main Content - Two Column Layout */}
-      <div className="flex-1 flex min-h-0">
+      <div ref={containerRef} className="flex-1 flex min-h-0">
         {/* Left Column - Spec & Chunks */}
-        <div className="w-1/2 border-r border-neutral-800 flex flex-col min-h-0">
+        <div
+          ref={leftColumnRef}
+          className="flex flex-col min-h-0"
+          style={{ width: `${leftPanelWidth}%` }}
+        >
           {/* Spec Section */}
-          <div className="flex-[2] p-4 border-b border-neutral-800 min-h-[300px] overflow-auto">
+          <div
+            className="p-4 overflow-auto"
+            style={{ height: `${specPanelHeight}%` }}
+          >
             {spec && (
               <SpecEditor
                 spec={spec}
@@ -242,8 +272,14 @@ export default function ProjectWorkspace() {
             )}
           </div>
 
+          {/* Vertical Resize Handle */}
+          <ResizeHandle direction="vertical" onResize={handleVerticalResize} />
+
           {/* Chunks Section */}
-          <div className="flex-1 p-4 min-h-0 overflow-auto">
+          <div
+            className="p-4 min-h-0 overflow-auto"
+            style={{ height: `${100 - specPanelHeight}%` }}
+          >
             <ChunkList
               projectId={projectId}
               chunks={chunks}
@@ -256,8 +292,14 @@ export default function ProjectWorkspace() {
           </div>
         </div>
 
+        {/* Horizontal Resize Handle */}
+        <ResizeHandle direction="horizontal" onResize={handleHorizontalResize} />
+
         {/* Right Column - Execution */}
-        <div className="w-1/2 flex flex-col min-h-0">
+        <div
+          className="flex flex-col min-h-0"
+          style={{ width: `${100 - leftPanelWidth}%` }}
+        >
           <div className="flex-1 p-4 overflow-auto">
             <ExecutionPanel
               chunk={displayChunk || null}
