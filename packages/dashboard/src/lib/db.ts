@@ -2,7 +2,7 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import { existsSync, mkdirSync } from 'fs';
-import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP } from '@glm/shared';
+import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP, MIGRATIONS_PHASE3_DEPS, MIGRATIONS_OUTPUT_SUMMARY } from '@glm/shared';
 import type { Project, Spec, Chunk, ChunkToolCall, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, SpecStatus, ReviewStatus } from '@glm/shared';
 
 const DB_DIR = path.join(os.homedir(), '.glm-orchestrator');
@@ -30,6 +30,12 @@ function getDb(): DatabaseType {
 
   // Run Review Loop migrations (add review columns to chunks table)
   runReviewLoopMigrations(db);
+
+  // Run Phase 3 migrations (add dependencies column to chunks table)
+  runPhase3DepsMigrations(db);
+
+  // Run Output Summary migrations (add output_summary column to chunks table)
+  runOutputSummaryMigrations(db);
 
   return db;
 }
@@ -61,6 +67,46 @@ function runReviewLoopMigrations(database: DatabaseType): void {
 
   if (!hasReviewStatusColumn) {
     for (const migration of MIGRATIONS_REVIEW_LOOP) {
+      try {
+        database.exec(migration);
+      } catch (err) {
+        // Column might already exist, ignore
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes('duplicate column')) {
+          console.warn(`Migration warning: ${message}`);
+        }
+      }
+    }
+  }
+}
+
+function runPhase3DepsMigrations(database: DatabaseType): void {
+  // Check if migration is needed by checking if 'dependencies' column exists
+  const tableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
+  const hasDependenciesColumn = tableInfo.some(col => col.name === 'dependencies');
+
+  if (!hasDependenciesColumn) {
+    for (const migration of MIGRATIONS_PHASE3_DEPS) {
+      try {
+        database.exec(migration);
+      } catch (err) {
+        // Column might already exist, ignore
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes('duplicate column')) {
+          console.warn(`Migration warning: ${message}`);
+        }
+      }
+    }
+  }
+}
+
+function runOutputSummaryMigrations(database: DatabaseType): void {
+  // Check if migration is needed by checking if 'output_summary' column exists
+  const tableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
+  const hasOutputSummaryColumn = tableInfo.some(col => col.name === 'output_summary');
+
+  if (!hasOutputSummaryColumn) {
+    for (const migration of MIGRATIONS_OUTPUT_SUMMARY) {
       try {
         database.exec(migration);
       } catch (err) {
@@ -333,14 +379,23 @@ interface ChunkRow {
   order: number;
   status: string;
   output: string | null;
+  output_summary: string | null;
   error: string | null;
   started_at: number | null;
   completed_at: number | null;
   review_status: string | null;
   review_feedback: string | null;
+  dependencies: string | null;
 }
 
 function rowToChunk(row: ChunkRow): Chunk {
+  let dependencies: string[] = [];
+  try {
+    dependencies = row.dependencies ? JSON.parse(row.dependencies) : [];
+  } catch {
+    dependencies = [];
+  }
+
   return {
     id: row.id,
     specId: row.spec_id,
@@ -349,11 +404,13 @@ function rowToChunk(row: ChunkRow): Chunk {
     order: row.order,
     status: row.status as Chunk['status'],
     output: row.output ?? undefined,
+    outputSummary: row.output_summary ?? undefined,
     error: row.error ?? undefined,
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
     reviewStatus: (row.review_status as ReviewStatus) ?? undefined,
     reviewFeedback: row.review_feedback ?? undefined,
+    dependencies,
   };
 }
 
@@ -373,7 +430,7 @@ export function getChunk(id: string): Chunk | null {
   return row ? rowToChunk(row) : null;
 }
 
-export function createChunk(specId: string, data: { title: string; description: string; order?: number }): Chunk {
+export function createChunk(specId: string, data: { title: string; description: string; order?: number; dependencies?: string[] }): Chunk {
   const database = getDb();
   const id = generateId();
 
@@ -385,11 +442,13 @@ export function createChunk(specId: string, data: { title: string; description: 
     order = (result.max_order ?? -1) + 1;
   }
 
+  const dependencies = data.dependencies ?? [];
+
   const stmt = database.prepare(`
-    INSERT INTO chunks (id, spec_id, title, description, "order", status)
-    VALUES (?, ?, ?, ?, ?, 'pending')
+    INSERT INTO chunks (id, spec_id, title, description, "order", status, dependencies)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?)
   `);
-  stmt.run(id, specId, data.title, data.description, order);
+  stmt.run(id, specId, data.title, data.description, order, JSON.stringify(dependencies));
 
   return {
     id,
@@ -398,6 +457,7 @@ export function createChunk(specId: string, data: { title: string; description: 
     description: data.description,
     order,
     status: 'pending',
+    dependencies,
   };
 }
 
@@ -407,9 +467,11 @@ export function updateChunk(id: string, data: {
   order?: number;
   status?: Chunk['status'];
   output?: string;
+  outputSummary?: string;
   error?: string;
   reviewStatus?: ReviewStatus;
   reviewFeedback?: string;
+  dependencies?: string[];
 }): Chunk | null {
   const database = getDb();
   const existing = getChunk(id);
@@ -417,15 +479,16 @@ export function updateChunk(id: string, data: {
 
   const stmt = database.prepare(`
     UPDATE chunks
-    SET title = ?, description = ?, "order" = ?, status = ?, output = ?, error = ?,
+    SET title = ?, description = ?, "order" = ?, status = ?, output = ?, output_summary = ?, error = ?,
         started_at = CASE WHEN ? = 'running' AND started_at IS NULL THEN ? ELSE started_at END,
         completed_at = CASE WHEN ? IN ('completed', 'failed') THEN ? ELSE completed_at END,
-        review_status = ?, review_feedback = ?
+        review_status = ?, review_feedback = ?, dependencies = ?
     WHERE id = ?
   `);
 
   const now = Date.now();
   const newStatus = data.status ?? existing.status;
+  const newDependencies = data.dependencies ?? existing.dependencies;
 
   stmt.run(
     data.title ?? existing.title,
@@ -433,11 +496,13 @@ export function updateChunk(id: string, data: {
     data.order ?? existing.order,
     newStatus,
     data.output ?? existing.output ?? null,
+    data.outputSummary ?? existing.outputSummary ?? null,
     data.error ?? existing.error ?? null,
     newStatus, now,  // For started_at
     newStatus, now,  // For completed_at
     data.reviewStatus ?? existing.reviewStatus ?? null,
     data.reviewFeedback ?? existing.reviewFeedback ?? null,
+    JSON.stringify(newDependencies),
     id
   );
 
@@ -485,13 +550,14 @@ export function insertFixChunk(afterChunkId: string, fixData: { title: string; d
   `);
   shiftStmt.run(originalChunk.specId, newOrder);
 
-  // Create the fix chunk
+  // Create the fix chunk (depends on the original chunk)
   const id = generateId();
+  const dependencies = [afterChunkId];  // Fix chunk depends on the chunk it's fixing
   const stmt = database.prepare(`
-    INSERT INTO chunks (id, spec_id, title, description, "order", status)
-    VALUES (?, ?, ?, ?, ?, 'pending')
+    INSERT INTO chunks (id, spec_id, title, description, "order", status, dependencies)
+    VALUES (?, ?, ?, ?, ?, 'pending', ?)
   `);
-  stmt.run(id, originalChunk.specId, fixData.title, fixData.description, newOrder);
+  stmt.run(id, originalChunk.specId, fixData.title, fixData.description, newOrder, JSON.stringify(dependencies));
 
   return {
     id,
@@ -500,6 +566,7 @@ export function insertFixChunk(afterChunkId: string, fixData: { title: string; d
     description: fixData.description,
     order: newOrder,
     status: 'pending',
+    dependencies,
   };
 }
 

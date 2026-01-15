@@ -4,6 +4,7 @@ import type { Chunk, ReviewStatus } from '@glm/shared';
 
 interface ChunkItemProps {
   chunk: Chunk;
+  chunkMap?: Map<string, Chunk>;
   index: number;
   isFirst: boolean;
   isLast: boolean;
@@ -15,6 +16,7 @@ interface ChunkItemProps {
   onMoveDown: () => void;
   onRun: () => void;
   onClick?: () => void;
+  onEditDependencies?: () => void;
 }
 
 const statusConfig = {
@@ -76,6 +78,7 @@ function truncateText(text: string, maxLength: number = 100): string {
 
 export default function ChunkItem({
   chunk,
+  chunkMap,
   index,
   isFirst,
   isLast,
@@ -87,9 +90,29 @@ export default function ChunkItem({
   onMoveDown,
   onRun,
   onClick,
+  onEditDependencies,
 }: ChunkItemProps) {
   const status = statusConfig[chunk.status];
   const canRun = chunk.status === 'pending' || chunk.status === 'failed' || chunk.status === 'cancelled';
+
+  // Check if all dependencies are completed
+  const allDepsCompleted = chunk.dependencies.every(depId => {
+    const dep = chunkMap?.get(depId);
+    return dep?.status === 'completed';
+  });
+
+  // Check if blocked (has uncompleted dependencies)
+  const isBlocked = chunk.dependencies.length > 0 && !allDepsCompleted && chunk.status !== 'completed' && chunk.status !== 'running';
+
+  // Get dependency details
+  const deps = chunk.dependencies.map(depId => {
+    const dep = chunkMap?.get(depId);
+    return {
+      id: depId,
+      title: dep?.title || depId,
+      status: dep?.status || 'pending',
+    };
+  });
 
   return (
     <div
@@ -118,6 +141,40 @@ export default function ChunkItem({
           <p className="text-xs text-neutral-500 mt-1 font-mono" title={chunk.description}>
             {truncateText(chunk.description, 80)}
           </p>
+
+          {/* Dependencies with inline status */}
+          {deps.length > 0 && (
+            <div className="mt-1.5 space-y-0.5">
+              <div className="text-[10px] font-mono text-neutral-500">
+                ↪ depends on:{' '}
+                {deps.slice(0, 2).map((dep, idx) => (
+                  <span key={dep.id}>
+                    <span className={dep.status === 'completed' ? 'text-emerald-400' : 'text-neutral-500'}>
+                      {dep.status === 'completed' ? '✓' : '○'}
+                    </span>
+                    <span className={dep.status === 'completed' ? 'text-neutral-400' : 'text-neutral-500'}>
+                      {' '}{dep.title.length > 20 ? dep.title.slice(0, 18) + '...' : dep.title}
+                    </span>
+                    {idx < Math.min(deps.length, 2) - 1 && <span className="text-neutral-600">, </span>}
+                  </span>
+                ))}
+                {deps.length > 2 && (
+                  <span className="text-neutral-600"> +{deps.length - 2}</span>
+                )}
+              </div>
+              {/* Can run / Blocked indicator */}
+              {allDepsCompleted && canRun && (
+                <div className="text-[10px] font-mono text-emerald-400">
+                  ✓ Can run now
+                </div>
+              )}
+              {isBlocked && (
+                <div className="text-[10px] font-mono text-neutral-500">
+                  ⏳ Blocked
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Status info */}
           {chunk.status === 'completed' && chunk.completedAt && (
@@ -181,6 +238,22 @@ export default function ChunkItem({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
+
+          {/* Dependencies */}
+          {onEditDependencies && (
+            <button
+              onClick={onEditDependencies}
+              disabled={isRunning}
+              className={`p-1 hover:bg-neutral-800 rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                chunk.dependencies.length > 0 ? 'text-emerald-500 hover:text-emerald-400' : 'text-neutral-600 hover:text-neutral-300'
+              }`}
+              title="Dependencies"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+              </svg>
+            </button>
+          )}
 
           {/* Delete */}
           <button

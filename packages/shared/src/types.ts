@@ -39,12 +39,34 @@ export interface Chunk {
   order: number;
   status: ChunkStatus;
   output?: string;
+  outputSummary?: string;  // Concise summary of what was accomplished (for context passing)
   error?: string;
   startedAt?: number;
   completedAt?: number;
   // Review fields
   reviewStatus?: ReviewStatus;
   reviewFeedback?: string;
+  // Dependencies (Phase 3)
+  dependencies: string[];  // IDs of chunks this depends on
+}
+
+// Graph visualization types (Phase 3)
+export interface ChunkNode {
+  id: string;
+  title: string;
+  status: ChunkStatus;
+  reviewStatus?: ReviewStatus;
+  dependencies: string[];
+  dependents: string[];  // Computed: chunks that depend on this
+  canRun: boolean;       // Computed: all dependencies completed
+  layer: number;         // Computed: depth in dependency graph
+  x: number;             // Position for graph layout
+  y: number;
+}
+
+export interface ChunkGraph {
+  nodes: ChunkNode[];
+  edges: Array<{ from: string; to: string }>;
 }
 
 export type ReviewStatus = 'pass' | 'needs_fix' | 'fail';
@@ -96,6 +118,7 @@ export interface UpdateChunkRequest {
   title?: string;
   description?: string;
   order?: number;
+  dependencies?: string[];
 }
 
 export interface CreateSpecRequest {
@@ -445,6 +468,10 @@ export interface ChunkSuggestion {
   description: string;
   selected: boolean;
   order: number;
+  // New fields for better dependency tracking and context
+  dependencies?: string[];  // IDs of chunks this depends on
+  files?: string[];         // Files this chunk will create/modify
+  outputs?: string[];       // Expected outputs/exports from this chunk
 }
 
 // Spec Studio API Request/Response types
@@ -588,4 +615,60 @@ export interface AllCompleteEvent {
 
 export interface StoppedEvent {
   reason: string;
+}
+
+// ============================================================================
+// Codebase Analysis Types
+// ============================================================================
+
+export type Framework =
+  | 'nextjs'
+  | 'react'
+  | 'express'
+  | 'nestjs'
+  | 'fastify'
+  | 'vue'
+  | 'angular'
+  | 'unknown';
+
+export type PackageManager = 'pnpm' | 'yarn' | 'npm' | 'unknown';
+
+export interface KeyFile {
+  path: string;
+  content?: string;
+  truncated?: boolean;
+}
+
+export interface DirectoryEntry {
+  name: string;
+  type: 'file' | 'directory';
+  children?: DirectoryEntry[];
+}
+
+export interface TypeDefinition {
+  name: string;
+  file: string;
+}
+
+export interface ComponentInfo {
+  name: string;
+  file: string;
+}
+
+export interface CodebaseContext {
+  framework: Framework;
+  typescript: boolean;
+  packageManager: PackageManager;
+  structure: DirectoryEntry[];
+  keyFiles: KeyFile[];
+  types: TypeDefinition[];
+  components: ComponentInfo[];
+  analyzedAt: number;
+  projectDirectory: string;
+}
+
+export interface AnalyzeCodebaseOptions {
+  maxDepth?: number;
+  maxEntriesPerDir?: number;
+  maxFileSize?: number;
 }

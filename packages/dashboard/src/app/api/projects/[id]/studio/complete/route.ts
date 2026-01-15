@@ -49,13 +49,26 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Create chunks from selected suggestions
+    // First pass: create a mapping from suggestion IDs to actual chunk IDs
     const selectedChunks = (body.chunks || []).filter(c => c.selected);
+    const idMapping: Record<string, string> = {};
+
+    // Create chunks and build ID mapping
     for (const chunk of selectedChunks) {
-      createChunk(spec.id, {
+      // Map dependency IDs from suggestion IDs to actual chunk IDs
+      const mappedDependencies = (chunk.dependencies || [])
+        .map(depId => idMapping[depId])
+        .filter((id): id is string => id !== undefined);
+
+      const createdChunk = createChunk(spec.id, {
         title: chunk.title,
         description: chunk.description,
         order: chunk.order,
+        dependencies: mappedDependencies,
       });
+
+      // Store mapping from suggestion ID to actual chunk ID
+      idMapping[chunk.id] = createdChunk.id;
     }
 
     // Mark studio as complete

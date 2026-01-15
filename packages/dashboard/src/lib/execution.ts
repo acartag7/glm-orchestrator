@@ -7,6 +7,8 @@
 import { OpencodeClient } from '@glm/mcp/client';
 import type { Project, Spec, Chunk, ChunkToolCall, ToolCallEvent, EventHandler } from '@glm/shared';
 import { getChunk, updateChunk, createToolCall, updateToolCall, getProject, getSpec, getChunksBySpec } from './db';
+import { buildPromptForChunk } from './prompt-builder';
+import { generateChunkSummary, generateQuickSummary } from './summary-generator';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -144,26 +146,12 @@ export function waitForChunkCompletion(
 }
 
 /**
- * Build prompt for chunk execution
+ * Build prompt for chunk execution with dependency context
  */
-function buildChunkPrompt(project: Project, spec: Spec, chunk: Chunk, totalChunks: number): string {
-  return `# Task: ${chunk.title}
-
-You are implementing a feature for the project "${project.name}".
-
-## Instructions
-${chunk.description}
-
-## Context
-- This is chunk ${chunk.order + 1} of ${totalChunks}
-- Working directory: ${project.directory}
-- Focus ONLY on this specific task
-- Do not modify unrelated files
-
-## Spec Reference
-${spec.title}
-
-Begin implementation.`;
+async function buildChunkPromptWithContext(spec: Spec, chunk: Chunk): Promise<string> {
+  // Wrap getChunk to convert null to undefined
+  const getChunkOrUndefined = (id: string): Chunk | undefined => getChunk(id) ?? undefined;
+  return buildPromptForChunk(chunk, spec, getChunkOrUndefined);
 }
 
 /**
@@ -217,12 +205,8 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
     return { success: false, error: 'Project not found' };
   }
 
-  // Get total chunks for context
-  const allChunks = getChunksBySpec(chunk.specId);
-  const totalChunks = allChunks.length;
-
-  // Build prompt
-  const prompt = buildChunkPrompt(project, spec, chunk, totalChunks);
+  // Build prompt with dependency context
+  const prompt = await buildChunkPromptWithContext(spec, chunk);
 
   // Create client
   const client = new OpencodeClient();
@@ -468,21 +452,64 @@ function cleanup(chunkId: string, status: 'completed' | 'failed' | 'cancelled', 
   // Delete session (don't wait)
   execution.client.deleteSession(execution.sessionId, execution.directory).catch(() => {});
 
+  const finalOutput = output || execution.textOutput || undefined;
+
   // Update chunk
   updateChunk(chunkId, {
     status,
     error: error || undefined,
-    output: output || execution.textOutput || undefined,
+    output: finalOutput,
   });
 
   // Emit final events
   emitEvent(chunkId, { type: 'status', status });
   if (status === 'completed') {
-    emitEvent(chunkId, { type: 'complete', output: output || execution.textOutput || 'Task completed' });
+    emitEvent(chunkId, { type: 'complete', output: finalOutput || 'Task completed' });
+
+    // Generate summary asynchronously (fire and forget)
+    // This ensures the summary is available for dependent chunks
+    generateSummaryAsync(chunkId, execution.directory);
   } else if (error) {
     emitEvent(chunkId, { type: 'error', error });
   }
 
   // Remove from active
   activeExecutions.delete(chunkId);
+}
+
+/**
+ * Generate summary asynchronously after chunk completion
+ * This runs in the background and updates the chunk when done
+ */
+async function generateSummaryAsync(chunkId: string, workingDirectory: string): Promise<void> {
+  try {
+    const chunk = getChunk(chunkId);
+    if (!chunk) {
+      console.error(`[Summary] Chunk not found: ${chunkId}`);
+      return;
+    }
+
+    console.error(`[Summary] Generating summary for chunk: ${chunk.title}`);
+
+    // Try to generate a detailed summary with Claude
+    const result = await generateChunkSummary(chunk, workingDirectory);
+
+    if (result.success && result.summary) {
+      updateChunk(chunkId, { outputSummary: result.summary });
+      console.error(`[Summary] Summary generated for chunk: ${chunk.title}`);
+    } else {
+      // Fall back to quick summary if Claude fails
+      const quickSummary = generateQuickSummary(chunk);
+      updateChunk(chunkId, { outputSummary: quickSummary });
+      console.error(`[Summary] Quick summary generated for chunk: ${chunk.title} (Claude failed: ${result.error})`);
+    }
+  } catch (error) {
+    console.error(`[Summary] Error generating summary for chunk ${chunkId}:`, error);
+    // Generate quick summary as fallback
+    const chunk = getChunk(chunkId);
+    if (chunk) {
+      const quickSummary = generateQuickSummary(chunk);
+      updateChunk(chunkId, { outputSummary: quickSummary });
+    }
+  }
 }

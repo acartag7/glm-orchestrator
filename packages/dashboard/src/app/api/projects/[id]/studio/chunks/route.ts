@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { existsSync, mkdirSync } from 'fs';
 import { getProject } from '@/lib/db';
+import { getCodebaseContext, formatCodebaseContext } from '@/lib/codebase-analyzer';
 import { ClaudeClient } from '@glm/mcp/client';
 import type { GenerateChunksRequest, ChunkSuggestion } from '@glm/shared';
 
@@ -36,52 +37,112 @@ function extractJSON(text: string): string {
   return str.trim();
 }
 
-const CHUNKS_SYSTEM_PROMPT = `You are a technical project planner. Your job is to break down software specifications into discrete implementation chunks that can be executed by an AI coding assistant.
+const CHUNKS_SYSTEM_PROMPT = `You are a senior software architect breaking down specifications into implementation tasks for an AI coding assistant (GLM).
 
-Return ONLY a valid JSON array of chunks. Do not include any markdown, code blocks, or explanation. Just the raw JSON.`;
+CRITICAL: GLM needs EXTREMELY DETAILED, STEP-BY-STEP instructions. It cannot infer context or make assumptions. Every task must be self-contained with exact file paths, function signatures, and expected outputs.
+
+Return ONLY a valid JSON array. No markdown, no code blocks, no explanation.`;
 
 type ChunkDetailLevel = 'minimal' | 'standard' | 'detailed';
 
 const CHUNK_COUNT_MAP: Record<ChunkDetailLevel, string> = {
-  minimal: '2-3',
-  standard: '4-6',
-  detailed: '7-10',
+  minimal: '3-5',
+  standard: '6-10',
+  detailed: '10-15',
 };
 
-const CHUNKS_PROMPT_TEMPLATE = `Break down this specification into implementation chunks. Each chunk should be a discrete task that can be executed independently by an AI coding assistant.
+const CHUNKS_PROMPT_TEMPLATE = `Break down this specification into implementation chunks for GLM (an AI coding assistant).
 
-Specification:
+{codebaseContext}
+
+## Specification
 {spec}
 
-Generate approximately {chunkCount} chunks.
+## Requirements
+Generate approximately {chunkCount} chunks with EXPLICIT DEPENDENCIES.
 
-Return a JSON array of chunks ordered by dependency (foundational tasks first):
-
+## Output Format
+Return a JSON array:
 [
   {
     "id": "chunk_1",
-    "title": "Setup dependencies",
-    "description": "Install required packages: bcrypt, jsonwebtoken. Add TypeScript type definitions. Update package.json.",
+    "title": "Initialize Next.js project with TypeScript and Tailwind",
+    "description": "DETAILED STEP-BY-STEP INSTRUCTIONS - see example below",
+    "dependencies": [],
     "selected": true,
-    "order": 1
+    "order": 1,
+    "files": ["package.json", "tsconfig.json", "tailwind.config.ts"],
+    "outputs": ["Next.js 14 project initialized", "TypeScript configured", "Tailwind CSS working"]
   },
   {
     "id": "chunk_2",
-    "title": "Create user database schema",
-    "description": "Create users table with columns: id (UUID), email (unique), password_hash, created_at, updated_at. Add appropriate indexes.",
+    "title": "Create User type definitions",
+    "description": "DETAILED STEP-BY-STEP INSTRUCTIONS",
+    "dependencies": ["chunk_1"],
     "selected": true,
-    "order": 2
+    "order": 2,
+    "files": ["src/types/user.ts"],
+    "outputs": ["User interface exported", "UserProfile type exported"]
   }
 ]
 
-Rules:
-- Each chunk should take 5-15 minutes to implement
-- Descriptions should be detailed enough for autonomous execution
-- Order by dependencies (setup -> core -> features -> tests)
-- Generate {chunkCount} chunks as requested
-- All chunks should have "selected": true by default
-- Generate unique IDs like chunk_1, chunk_2, etc.
-- Return ONLY valid JSON, no markdown code blocks`;
+## CRITICAL: Description Format
+Each description MUST follow this exact structure:
+
+"""
+## Goal
+[One sentence: what this chunk accomplishes]
+
+## Prerequisites
+[What must exist before this runs - reference specific files/functions from dependencies]
+
+## Steps
+1. [Exact action with file path]
+   - Create file at: src/types/user.ts
+   - Add interface User with fields: id (string), email (string), name (string)
+
+2. [Next action]
+   - Modify file: src/lib/api.ts
+   - Add function: fetchUser(id: string): Promise<User>
+   - Import User from '../types/user'
+
+## Expected Output
+- File created: src/types/user.ts with User interface
+- Function added: fetchUser in src/lib/api.ts
+- Exports available: User, fetchUser
+
+## Verification
+[How to verify this chunk worked - e.g., "Import User from src/types/user should resolve"]
+"""
+
+## Dependency Rules
+- dependencies: [] means can run first (no prerequisites)
+- dependencies: ["chunk_1"] means chunk_1 must complete first
+- Multiple deps: ["chunk_1", "chunk_2"] means BOTH must complete
+- NEVER create circular dependencies
+- Foundation chunks (setup, types, config) should have NO dependencies
+- Feature chunks depend on their foundation chunks
+
+## Chunk Sizing Rules
+- Each chunk: ONE focused task (not multiple features)
+- 5-15 minutes of AI coding work
+- Clear input → output boundary
+- Can be verified independently
+
+## Anti-Patterns to Avoid
+- ❌ "Create the authentication system" (too vague)
+- ❌ "Set up everything" (not specific)
+- ❌ "Implement user features" (multiple tasks bundled)
+- ✅ "Create POST /api/auth/login endpoint that accepts {email, password} and returns {token, user}"
+- ✅ "Add bcrypt password hashing to User model with hashPassword() and verifyPassword() methods"
+
+## Existing Codebase Integration
+- Reference actual file paths from the codebase analysis above
+- Use existing types/interfaces - don't recreate them
+- Extend existing components rather than creating duplicates
+- Follow the patterns already established in the project
+
+Return ONLY valid JSON, no markdown code blocks.`;
 
 // POST /api/projects/[id]/studio/chunks - Generate chunk suggestions
 export async function POST(request: Request, context: RouteContext) {
@@ -108,7 +169,12 @@ export async function POST(request: Request, context: RouteContext) {
     const chunkPreference = (body as { chunkPreference?: ChunkDetailLevel }).chunkPreference || 'standard';
     const chunkCount = CHUNK_COUNT_MAP[chunkPreference];
 
+    // Analyze codebase for context
+    const codebaseCtx = getCodebaseContext(project.directory);
+    const formattedContext = formatCodebaseContext(codebaseCtx);
+
     const prompt = CHUNKS_PROMPT_TEMPLATE
+      .replace('{codebaseContext}', formattedContext)
       .replace('{spec}', body.spec)
       .replace(/{chunkCount}/g, chunkCount);
 
@@ -118,7 +184,7 @@ export async function POST(request: Request, context: RouteContext) {
     const result = await client.execute(prompt, {
       workingDirectory: workingDir,
       systemPrompt: CHUNKS_SYSTEM_PROMPT,
-      timeout: 60000,
+      timeout: 180000, // 3 minutes for complex chunk generation
     });
 
     if (!result.success) {

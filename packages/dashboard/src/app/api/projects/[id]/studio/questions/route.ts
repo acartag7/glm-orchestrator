@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { existsSync, mkdirSync } from 'fs';
 import { getProject } from '@/lib/db';
+import { getCodebaseContext, formatCodebaseContext } from '@/lib/codebase-analyzer';
 import { ClaudeClient } from '@glm/mcp/client';
 import type { GenerateQuestionsRequest, Question } from '@glm/shared';
 
@@ -30,11 +31,14 @@ const QUESTIONS_PROMPT_TEMPLATE = `Generate 3-6 clarifying questions for this pr
 Project: {directory}
 Intent: {intent}
 
+{codebaseContext}
+
 Return ONLY this JSON format (no markdown):
 [{"id":"q1","question":"...","type":"choice","options":["Option A","Option B"],"required":true}]
 
 Types: "choice" (radio), "multiselect" (checkboxes), "text" (textarea)
 Rules: Generate unique IDs (q1,q2...), keep questions focused, add (recommended) to preferred options.
+Consider the existing codebase when generating options - suggest patterns consistent with what already exists.
 
 IMPORTANT: Output raw JSON only. No \`\`\`json blocks.`;
 
@@ -78,9 +82,14 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
+    // Analyze codebase for context
+    const codebaseCtx = getCodebaseContext(project.directory);
+    const formattedContext = formatCodebaseContext(codebaseCtx);
+
     const prompt = QUESTIONS_PROMPT_TEMPLATE
       .replace('{directory}', project.directory)
-      .replace('{intent}', body.intent);
+      .replace('{intent}', body.intent)
+      .replace('{codebaseContext}', formattedContext);
 
     // Ensure project directory exists
     const workingDir = ensureDirectory(project.directory);

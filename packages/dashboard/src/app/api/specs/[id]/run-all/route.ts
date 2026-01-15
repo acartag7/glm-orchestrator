@@ -16,7 +16,38 @@ import {
   hasActiveRunAllSession,
 } from '@/lib/execution';
 import { ClaudeClient } from '@glm/mcp/client';
-import type { ReviewResult, ReviewStatus, ChunkToolCall } from '@glm/shared';
+import type { ReviewResult, ReviewStatus, ChunkToolCall, Chunk } from '@glm/shared';
+
+/**
+ * Find chunks that can run (all dependencies completed)
+ */
+function findRunnableChunks(
+  allChunks: Chunk[],
+  completedIds: Set<string>,
+  runningIds: Set<string>,
+  failedIds: Set<string>
+): Chunk[] {
+  return allChunks.filter(chunk => {
+    // Skip already completed, running, or failed
+    if (completedIds.has(chunk.id) || runningIds.has(chunk.id) || failedIds.has(chunk.id)) {
+      return false;
+    }
+
+    // Skip if not in a runnable state
+    if (chunk.status !== 'pending' && chunk.status !== 'failed' && chunk.status !== 'cancelled') {
+      return false;
+    }
+
+    // Check if all dependencies are completed
+    for (const depId of chunk.dependencies) {
+      if (!completedIds.has(depId)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+}
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -289,76 +320,125 @@ export async function POST(_request: Request, context: RouteContext) {
         }
       }
 
-      // Main execution loop
+      // Main execution loop with parallel execution
       try {
-        for (const chunk of pendingChunks) {
-          currentIndex++;
+        const completedIds = new Set<string>();
+        const runningIds = new Set<string>();
+        const failedIds = new Set<string>();
 
-          // Check for abort before each chunk
+        // Initialize completed set with already completed chunks
+        for (const chunk of allChunks) {
+          if (chunk.status === 'completed') {
+            completedIds.add(chunk.id);
+          }
+        }
+
+        // Run chunks in parallel based on dependencies
+        let hasFailure = false;
+        let stopReason: string | null = null;
+
+        while (!hasFailure && !stopReason) {
+          // Check for abort
           if (isRunAllAborted(specId)) {
-            sendEvent(controller, encoder, 'stopped', { reason: 'Aborted by user' });
+            stopReason = 'Aborted by user';
             break;
           }
 
-          // Run the chunk
-          const result = await runChunk(chunk.id, chunk.title, currentIndex, false);
+          // Refresh chunks from DB to get latest state
+          const currentChunks = getChunksBySpec(specId);
 
-          if (!result.success) {
-            // If abort, stop gracefully
-            if (isRunAllAborted(specId)) {
-              sendEvent(controller, encoder, 'stopped', { reason: 'Aborted by user' });
-              break;
-            }
-            failed++;
-            sendEvent(controller, encoder, 'stopped', {
-              reason: `Chunk "${chunk.title}" failed`,
-            });
+          // Find chunks that can run
+          const runnableChunks = findRunnableChunks(currentChunks, completedIds, runningIds, failedIds);
+
+          // Check if we're done
+          if (runnableChunks.length === 0 && runningIds.size === 0) {
+            // No more chunks to run and none running
             break;
           }
 
-          // Handle review result
-          if (result.reviewResult) {
-            if (result.reviewResult.status === 'pass') {
-              passed++;
-            } else if (result.reviewResult.status === 'needs_fix' && result.fixChunkId) {
-              // Run fix chunk
-              fixes++;
-              const fixChunk = getChunk(result.fixChunkId);
-              if (fixChunk) {
-                const fixResult = await runChunk(result.fixChunkId, fixChunk.title, currentIndex, true);
+          // If nothing can run but some are still running, wait for them
+          if (runnableChunks.length === 0) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            continue;
+          }
 
-                if (!fixResult.success) {
-                  if (isRunAllAborted(specId)) {
-                    sendEvent(controller, encoder, 'stopped', { reason: 'Aborted by user' });
-                  } else {
-                    failed++;
-                    sendEvent(controller, encoder, 'stopped', {
-                      reason: `Fix chunk "${fixChunk.title}" failed`,
-                    });
-                  }
-                  break;
-                }
+          // Start running chunks in parallel
+          const runPromises = runnableChunks.map(async (chunk) => {
+            currentIndex++;
+            runningIds.add(chunk.id);
 
-                // Check fix chunk review
-                if (fixResult.reviewResult?.status === 'pass') {
-                  passed++;
-                } else if (fixResult.reviewResult?.status === 'fail') {
-                  failed++;
-                  sendEvent(controller, encoder, 'stopped', {
-                    reason: `Fix chunk "${fixChunk.title}" review failed`,
-                  });
-                  break;
-                }
-                // If fix needs another fix, we'll skip for now (could recursively fix)
+            const result = await runChunk(chunk.id, chunk.title, currentIndex, false);
+            runningIds.delete(chunk.id);
+
+            if (!result.success) {
+              if (isRunAllAborted(specId)) {
+                stopReason = 'Aborted by user';
+              } else {
+                failedIds.add(chunk.id);
+                failed++;
+                hasFailure = true;
+                stopReason = `Chunk "${chunk.title}" failed`;
               }
-            } else if (result.reviewResult.status === 'fail') {
-              failed++;
-              sendEvent(controller, encoder, 'stopped', {
-                reason: `Chunk "${chunk.title}" review failed`,
-              });
-              break;
+              return;
             }
-          }
+
+            // Handle review result
+            if (result.reviewResult) {
+              if (result.reviewResult.status === 'pass') {
+                completedIds.add(chunk.id);
+                passed++;
+              } else if (result.reviewResult.status === 'needs_fix' && result.fixChunkId) {
+                // Run fix chunk (sequentially after the original)
+                fixes++;
+                const fixChunk = getChunk(result.fixChunkId);
+                if (fixChunk) {
+                  const fixResult = await runChunk(result.fixChunkId, fixChunk.title, currentIndex, true);
+
+                  if (!fixResult.success) {
+                    if (isRunAllAborted(specId)) {
+                      stopReason = 'Aborted by user';
+                    } else {
+                      failedIds.add(chunk.id);
+                      failed++;
+                      hasFailure = true;
+                      stopReason = `Fix chunk "${fixChunk.title}" failed`;
+                    }
+                    return;
+                  }
+
+                  // Check fix chunk review
+                  if (fixResult.reviewResult?.status === 'pass') {
+                    completedIds.add(chunk.id);
+                    completedIds.add(result.fixChunkId);
+                    passed++;
+                  } else if (fixResult.reviewResult?.status === 'fail') {
+                    failedIds.add(chunk.id);
+                    failed++;
+                    hasFailure = true;
+                    stopReason = `Fix chunk "${fixChunk.title}" review failed`;
+                    return;
+                  } else {
+                    // needs_fix again - mark as completed for now to avoid infinite loop
+                    completedIds.add(chunk.id);
+                    completedIds.add(result.fixChunkId);
+                  }
+                }
+              } else if (result.reviewResult.status === 'fail') {
+                failedIds.add(chunk.id);
+                failed++;
+                hasFailure = true;
+                stopReason = `Chunk "${chunk.title}" review failed`;
+                return;
+              }
+            }
+          });
+
+          // Wait for all parallel chunks to complete
+          await Promise.all(runPromises);
+        }
+
+        if (stopReason) {
+          sendEvent(controller, encoder, 'stopped', { reason: stopReason });
         }
 
         // Check if all completed successfully

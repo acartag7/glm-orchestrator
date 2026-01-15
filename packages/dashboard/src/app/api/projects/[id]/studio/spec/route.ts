@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { existsSync, mkdirSync } from 'fs';
 import { getProject } from '@/lib/db';
+import { getCodebaseContext, formatCodebaseContext } from '@/lib/codebase-analyzer';
 import { ClaudeClient } from '@glm/mcp/client';
 import type { GenerateSpecRequest } from '@glm/shared';
 
@@ -28,6 +29,8 @@ const SPEC_PROMPT_TEMPLATE = `Create a detailed software specification based on 
 
 Project directory: {directory}
 
+{codebaseContext}
+
 Intent:
 {intent}
 
@@ -40,7 +43,9 @@ Write a clear, actionable specification in Markdown format. Include:
 - Acceptance criteria (testable conditions)
 - Technical constraints (if any were mentioned)
 
-Be specific enough that another developer or AI could implement this without ambiguity.`;
+Be specific enough that another developer or AI could implement this without ambiguity.
+Reference existing patterns, components, and types from the codebase analysis when relevant.
+Avoid recreating utilities or components that already exist - extend or use them instead.`;
 
 // POST /api/projects/[id]/studio/spec - Generate spec from intent + answers
 export async function POST(request: Request, context: RouteContext) {
@@ -71,8 +76,13 @@ export async function POST(request: Request, context: RouteContext) {
       })
       .join('\n') || 'No additional answers provided.';
 
+    // Analyze codebase for context
+    const codebaseCtx = getCodebaseContext(project.directory);
+    const formattedContext = formatCodebaseContext(codebaseCtx);
+
     const prompt = SPEC_PROMPT_TEMPLATE
       .replace('{directory}', project.directory)
+      .replace('{codebaseContext}', formattedContext)
       .replace('{intent}', body.intent)
       .replace('{formattedAnswers}', formattedAnswers);
 

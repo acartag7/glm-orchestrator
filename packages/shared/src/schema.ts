@@ -233,3 +233,19 @@ export const MIGRATIONS_REVIEW_LOOP = [
   `ALTER TABLE chunks ADD COLUMN review_status TEXT`,
   `ALTER TABLE chunks ADD COLUMN review_feedback TEXT`,
 ];
+
+/**
+ * Migration queries for Phase 3 (Dependencies/Graph View)
+ * Adds dependencies column to chunks table
+ */
+export const MIGRATIONS_PHASE3_DEPS = [
+  `ALTER TABLE chunks ADD COLUMN dependencies TEXT DEFAULT '[]'`,
+];
+
+/**
+ * Migration queries for Output Summary feature
+ * Adds output_summary column to chunks table for context passing
+ */
+export const MIGRATIONS_OUTPUT_SUMMARY = [
+  `ALTER TABLE chunks ADD COLUMN output_summary TEXT`,
+];
