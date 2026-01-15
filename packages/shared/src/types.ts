@@ -499,3 +499,93 @@ export interface CompleteStudioRequest {
 export interface CompleteStudioResponse {
   success: boolean;
 }
+
+// ============================================================================
+// Run All Types
+// ============================================================================
+
+export type RunAllEventType =
+  | 'chunk_start'
+  | 'tool_call'
+  | 'chunk_complete'
+  | 'review_start'
+  | 'review_complete'
+  | 'fix_chunk_start'
+  | 'fix_chunk_complete'
+  | 'error'
+  | 'all_complete'
+  | 'stopped';
+
+export interface RunAllEvent {
+  type: RunAllEventType;
+  chunkId?: string;
+  timestamp: number;
+  data: Record<string, unknown>;
+}
+
+export interface RunAllProgress {
+  current: number;
+  total: number;
+  passed: number;
+  failed: number;
+  fixes: number;
+}
+
+export interface RunAllState {
+  isRunning: boolean;
+  isPaused: boolean;
+  currentChunkId: string | null;
+  currentStep: 'executing' | 'reviewing' | 'fix' | null;
+  progress: RunAllProgress;
+  events: RunAllEvent[];
+  error: string | null;
+}
+
+// SSE event payloads
+export interface ChunkStartEvent {
+  chunkId: string;
+  title: string;
+  index: number;
+  total: number;
+}
+
+export interface ChunkCompleteEvent {
+  chunkId: string;
+  output: string;
+}
+
+export interface ReviewStartEvent {
+  chunkId: string;
+}
+
+export interface ReviewCompleteEvent {
+  chunkId: string;
+  status: ReviewStatus;
+  feedback: string;
+  fixChunkId?: string;
+}
+
+export interface FixChunkStartEvent {
+  chunkId: string;
+  title: string;
+}
+
+export interface FixChunkCompleteEvent {
+  chunkId: string;
+}
+
+export interface RunAllErrorEvent {
+  chunkId?: string;
+  message: string;
+}
+
+export interface AllCompleteEvent {
+  specId: string;
+  passed: number;
+  failed: number;
+  fixes: number;
+}
+
+export interface StoppedEvent {
+  reason: string;
+}

@@ -36,6 +36,113 @@ const activeExecutions = new Map<string, ActiveExecution>();
 // Map tool call IDs from opencode to our IDs
 const toolCallIdMap = new Map<string, string>();
 
+// Store active run-all sessions
+const activeRunAllSessions = new Map<string, { aborted: boolean }>();
+
+/**
+ * Start a run-all session for a spec
+ */
+export function startRunAllSession(specId: string): void {
+  activeRunAllSessions.set(specId, { aborted: false });
+}
+
+/**
+ * Check if run-all should be aborted
+ */
+export function isRunAllAborted(specId: string): boolean {
+  const session = activeRunAllSessions.get(specId);
+  return session?.aborted ?? false;
+}
+
+/**
+ * Abort a run-all session
+ */
+export function abortRunAllSession(specId: string): void {
+  const session = activeRunAllSessions.get(specId);
+  if (session) {
+    session.aborted = true;
+  }
+}
+
+/**
+ * End a run-all session
+ */
+export function endRunAllSession(specId: string): void {
+  activeRunAllSessions.delete(specId);
+}
+
+/**
+ * Check if a run-all session is active
+ */
+export function hasActiveRunAllSession(specId: string): boolean {
+  return activeRunAllSessions.has(specId);
+}
+
+/**
+ * Wait for a chunk execution to complete
+ * Returns the final status and output/error
+ */
+export function waitForChunkCompletion(
+  chunkId: string,
+  onToolCall?: (toolCall: ChunkToolCall) => void,
+  onText?: (text: string) => void
+): Promise<{ status: 'completed' | 'failed' | 'cancelled'; output?: string; error?: string }> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let output = '';
+    let error = '';
+
+    const unsubscribe = subscribeToExecution(chunkId, (event) => {
+      if (resolved) return;
+
+      switch (event.type) {
+        case 'tool_call':
+          if (onToolCall) onToolCall(event.toolCall);
+          break;
+        case 'text':
+          if (onText) onText(event.text);
+          break;
+        case 'complete':
+          output = event.output;
+          break;
+        case 'error':
+          error = event.error;
+          break;
+        case 'status':
+          if (event.status === 'completed' || event.status === 'failed' || event.status === 'cancelled') {
+            resolved = true;
+            unsubscribe();
+            resolve({
+              status: event.status,
+              output: output || undefined,
+              error: error || undefined,
+            });
+          }
+          break;
+      }
+    });
+
+    // Also check if execution is not active (already completed)
+    const execution = activeExecutions.get(chunkId);
+    if (!execution) {
+      resolved = true;
+      unsubscribe();
+      // Chunk not running - get status from DB
+      const chunk = getChunk(chunkId);
+      if (chunk) {
+        resolve({
+          status: chunk.status === 'completed' ? 'completed' :
+                  chunk.status === 'cancelled' ? 'cancelled' : 'failed',
+          output: chunk.output,
+          error: chunk.error,
+        });
+      } else {
+        resolve({ status: 'failed', error: 'Chunk not found' });
+      }
+    }
+  });
+}
+
 /**
  * Build prompt for chunk execution
  */

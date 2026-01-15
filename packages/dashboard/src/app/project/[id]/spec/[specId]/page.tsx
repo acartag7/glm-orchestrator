@@ -7,8 +7,10 @@ import type { Project, Spec, Chunk, ChunkToolCall } from '@glm/shared';
 import SpecEditor from '@/components/SpecEditor';
 import ChunkList from '@/components/ChunkList';
 import ExecutionPanel from '@/components/ExecutionPanel';
+import RunAllProgressPanel from '@/components/RunAllProgressPanel';
 import ResizeHandle from '@/components/ResizeHandle';
 import { useExecution } from '@/hooks/useExecution';
+import { useRunAll } from '@/hooks/useRunAll';
 
 interface ChunkHistory {
   chunk: Chunk;
@@ -28,6 +30,17 @@ export default function SpecWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [selectedChunk, setSelectedChunk] = useState<Chunk | null>(null);
   const [chunkHistory, setChunkHistory] = useState<ChunkHistory | null>(null);
+  const [showRunAllPanel, setShowRunAllPanel] = useState(false);
+
+  // Run All state
+  const {
+    state: runAllState,
+    chunkStatuses,
+    currentToolCalls: runAllToolCalls,
+    startRunAll,
+    stopRunAll,
+    reset: resetRunAll,
+  } = useRunAll(specId);
 
   // Panel sizes
   const [leftPanelWidth, setLeftPanelWidth] = useState(50);
@@ -216,6 +229,29 @@ export default function SpecWorkspace() {
     clearReview();
   }, [clearReview]);
 
+  // Handle Run All
+  const handleRunAll = useCallback(async () => {
+    setShowRunAllPanel(true);
+    await startRunAll();
+    // Refresh chunks after run all completes
+    await refreshChunks();
+  }, [startRunAll, refreshChunks]);
+
+  // Handle closing Run All panel
+  const handleCloseRunAll = useCallback(() => {
+    setShowRunAllPanel(false);
+    resetRunAll();
+    // Refresh chunks to get latest status
+    refreshChunks();
+  }, [resetRunAll, refreshChunks]);
+
+  // Watch for run all completion to refresh chunks
+  useEffect(() => {
+    if (!runAllState.isRunning && showRunAllPanel && runAllState.progress.current > 0) {
+      refreshChunks();
+    }
+  }, [runAllState.isRunning, showRunAllPanel, runAllState.progress.current, refreshChunks]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-neutral-950 flex items-center justify-center">
@@ -296,6 +332,29 @@ export default function SpecWorkspace() {
             </svg>
             Edit in Studio
           </Link>
+          <button
+            onClick={handleRunAll}
+            disabled={runAllState.isRunning || executionState.isRunning || chunks.filter(c => c.status === 'pending' || c.status === 'failed' || c.status === 'cancelled').length === 0}
+            className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-md font-mono text-xs transition-colors flex items-center gap-1.5"
+            title="Run all pending chunks sequentially"
+          >
+            {runAllState.isRunning ? (
+              <>
+                <svg className="animate-spin w-3.5 h-3.5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Running {runAllState.progress.current}/{runAllState.progress.total}...
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z" />
+                </svg>
+                Run All
+              </>
+            )}
+          </button>
           {executionState.isRunning && (
             <div className="flex items-center gap-2 text-xs font-mono">
               <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -347,28 +406,41 @@ export default function SpecWorkspace() {
         {/* Horizontal Resize Handle */}
         <ResizeHandle direction="horizontal" onResize={handleHorizontalResize} />
 
-        {/* Right Column - Execution */}
+        {/* Right Column - Execution or Run All Progress */}
         <div
           className="flex flex-col min-h-0"
           style={{ width: `${100 - leftPanelWidth}%` }}
         >
           <div className="flex-1 p-4 overflow-auto">
-            <ExecutionPanel
-              chunk={displayChunk || null}
-              toolCalls={displayToolCalls}
-              output={displayOutput}
-              error={displayError}
-              isRunning={executionState.isRunning}
-              startedAt={executionState.startedAt}
-              onCancel={executionState.isRunning ? handleCancelExecution : undefined}
-              isReviewing={executionState.isReviewing}
-              reviewResult={executionState.reviewResult}
-              fixChunkId={executionState.fixChunkId}
-              onReview={handleReviewChunk}
-              onRunFix={handleRunFix}
-              onSkipReview={handleSkipReview}
-              onMarkDone={handleMarkDone}
-            />
+            {showRunAllPanel ? (
+              <RunAllProgressPanel
+                isRunning={runAllState.isRunning}
+                currentStep={runAllState.currentStep}
+                progress={runAllState.progress}
+                chunkStatuses={chunkStatuses}
+                currentToolCalls={runAllToolCalls}
+                error={runAllState.error}
+                onStop={stopRunAll}
+                onClose={handleCloseRunAll}
+              />
+            ) : (
+              <ExecutionPanel
+                chunk={displayChunk || null}
+                toolCalls={displayToolCalls}
+                output={displayOutput}
+                error={displayError}
+                isRunning={executionState.isRunning}
+                startedAt={executionState.startedAt}
+                onCancel={executionState.isRunning ? handleCancelExecution : undefined}
+                isReviewing={executionState.isReviewing}
+                reviewResult={executionState.reviewResult}
+                fixChunkId={executionState.fixChunkId}
+                onReview={handleReviewChunk}
+                onRunFix={handleRunFix}
+                onSkipReview={handleSkipReview}
+                onMarkDone={handleMarkDone}
+              />
+            )}
           </div>
         </div>
       </div>
