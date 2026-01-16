@@ -8,6 +8,8 @@ import ChunkGraph from './ChunkGraph';
 import ExecutionPlan from './ExecutionPlan';
 import ViewModeToggle, { type ViewMode } from './ViewModeToggle';
 import DependencyEditor from './DependencyEditor';
+import ConfirmModal from './ConfirmModal';
+import { useToast } from './Toast';
 
 interface ChunkListProps {
   specId: string;
@@ -37,6 +39,8 @@ export default function ChunkList({
   const [isLoading, setIsLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingDependenciesChunk, setEditingDependenciesChunk] = useState<Chunk | null>(null);
+  const [deletingChunk, setDeletingChunk] = useState<Chunk | null>(null);
+  const { addToast } = useToast();
 
   // Create chunk map for dependency lookups
   const chunkMap = new Map(chunks.map(c => [c.id, c]));
@@ -59,12 +63,13 @@ export default function ChunkList({
       const newChunk = await response.json();
       onChunksChange?.([...chunks, newChunk]);
       setIsCreating(false);
+      addToast('Chunk created successfully', 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to create chunk');
+      addToast(err instanceof Error ? err.message : 'Failed to create chunk', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [specId, chunks, onChunksChange]);
+  }, [specId, chunks, onChunksChange, addToast]);
 
   // Update chunk
   const handleUpdate = useCallback(async (chunk: Chunk, data: { title: string; description: string }) => {
@@ -84,20 +89,26 @@ export default function ChunkList({
       const updatedChunk = await response.json();
       onChunksChange?.(chunks.map(c => c.id === chunk.id ? updatedChunk : c));
       setEditingChunk(null);
+      addToast('Chunk updated successfully', 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to update chunk');
+      addToast(err instanceof Error ? err.message : 'Failed to update chunk', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [chunks, onChunksChange]);
+  }, [chunks, onChunksChange, addToast]);
 
-  // Delete chunk
-  const handleDelete = useCallback(async (chunk: Chunk) => {
-    if (!confirm(`Delete "${chunk.title}"?`)) return;
+  // Delete chunk - show confirmation modal
+  const handleDeleteRequest = useCallback((chunk: Chunk) => {
+    setDeletingChunk(chunk);
+  }, []);
+
+  // Confirm delete chunk
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deletingChunk) return;
 
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/chunks/${chunk.id}`, {
+      const response = await fetch(`/api/chunks/${deletingChunk.id}`, {
         method: 'DELETE',
       });
 
@@ -106,13 +117,15 @@ export default function ChunkList({
         throw new Error(error.error || 'Failed to delete chunk');
       }
 
-      onChunksChange?.(chunks.filter(c => c.id !== chunk.id));
+      onChunksChange?.(chunks.filter(c => c.id !== deletingChunk.id));
+      setDeletingChunk(null);
+      addToast('Chunk deleted successfully', 'success');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete chunk');
+      addToast(err instanceof Error ? err.message : 'Failed to delete chunk', 'error');
     } finally {
       setIsLoading(false);
     }
-  }, [chunks, onChunksChange]);
+  }, [deletingChunk, chunks, onChunksChange, addToast]);
 
   // Update chunk dependencies
   const handleUpdateDependencies = useCallback(async (dependencies: string[]) => {
@@ -221,7 +234,7 @@ export default function ChunkList({
                   isRunning={runningChunkId === chunk.id}
                   isSelected={selectedChunkId === chunk.id}
                   onEdit={() => setEditingChunk(chunk)}
-                  onDelete={() => handleDelete(chunk)}
+                  onDelete={() => handleDeleteRequest(chunk)}
                   onMoveUp={() => handleMove(chunk, 'up')}
                   onMoveDown={() => handleMove(chunk, 'down')}
                   onRun={() => onRunChunk?.(chunk)}
@@ -276,6 +289,20 @@ export default function ChunkList({
           allChunks={chunks}
           onSave={handleUpdateDependencies}
           onCancel={() => setEditingDependenciesChunk(null)}
+        />
+      )}
+
+      {/* Delete confirmation modal */}
+      {deletingChunk && (
+        <ConfirmModal
+          title="delete chunk"
+          message={`Are you sure you want to delete "${deletingChunk.title}"? This action cannot be undone.`}
+          confirmLabel="delete"
+          cancelLabel="cancel"
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => setDeletingChunk(null)}
+          isDanger
+          isLoading={isLoading}
         />
       )}
     </div>
