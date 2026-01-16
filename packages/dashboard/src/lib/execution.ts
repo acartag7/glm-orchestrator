@@ -11,6 +11,7 @@ import { buildPromptForChunk } from './prompt-builder';
 import { generateChunkSummary, generateQuickSummary } from './summary-generator';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const MAX_BUFFER_SIZE = 1000; // Maximum events to buffer for late subscribers
 
 interface ActiveExecution {
   chunkId: string;
@@ -37,6 +38,9 @@ const activeExecutions = new Map<string, ActiveExecution>();
 
 // Map tool call IDs from opencode to our IDs
 const toolCallIdMap = new Map<string, string>();
+
+// Track which opencode tool call IDs belong to which chunk (for cleanup)
+const chunkToolCallIds = new Map<string, Set<string>>();
 
 // Store active run-all sessions
 const activeRunAllSessions = new Map<string, { aborted: boolean }>();
@@ -371,6 +375,11 @@ function emitEvent(chunkId: string, event: ExecutionEvent): void {
     // Buffer event for late subscribers
     execution.eventBuffer.push(event);
 
+    // Enforce buffer size limit by removing oldest events
+    if (execution.eventBuffer.length > MAX_BUFFER_SIZE) {
+      execution.eventBuffer.splice(0, execution.eventBuffer.length - MAX_BUFFER_SIZE);
+    }
+
     // Send to current listeners
     for (const listener of execution.listeners) {
       try {
@@ -395,6 +404,14 @@ function handleToolCall(chunkId: string, toolCall: ToolCallEvent): void {
     });
     dbToolCallId = dbToolCall.id;
     toolCallIdMap.set(toolCall.callId, dbToolCallId);
+
+    // Track this tool call ID for cleanup
+    let chunkIds = chunkToolCallIds.get(chunkId);
+    if (!chunkIds) {
+      chunkIds = new Set();
+      chunkToolCallIds.set(chunkId, chunkIds);
+    }
+    chunkIds.add(toolCall.callId);
   }
 
   // Update status
@@ -451,6 +468,15 @@ function cleanup(chunkId: string, status: 'completed' | 'failed' | 'cancelled', 
 
   // Delete session (don't wait)
   execution.client.deleteSession(execution.sessionId, execution.directory).catch(() => {});
+
+  // Clean up tool call ID mappings for this chunk
+  const toolCallIds = chunkToolCallIds.get(chunkId);
+  if (toolCallIds) {
+    for (const opcodeId of toolCallIds) {
+      toolCallIdMap.delete(opcodeId);
+    }
+    chunkToolCallIds.delete(chunkId);
+  }
 
   const finalOutput = output || execution.textOutput || undefined;
 
