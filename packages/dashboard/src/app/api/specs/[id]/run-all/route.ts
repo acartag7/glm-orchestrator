@@ -362,8 +362,14 @@ export async function POST(_request: Request, context: RouteContext) {
             continue;
           }
 
-          // Start running chunks in parallel
-          const runPromises = runnableChunks.map(async (chunk) => {
+          // TODO: Implement proper parallel execution with mutex or async queue
+          // Running chunks sequentially to avoid race condition on shared state
+          for (const chunk of runnableChunks) {
+            // Check for abort before starting each chunk
+            if (isRunAllAborted(specId) || hasFailure) {
+              break;
+            }
+
             currentIndex++;
             runningIds.add(chunk.id);
 
@@ -379,7 +385,7 @@ export async function POST(_request: Request, context: RouteContext) {
                 hasFailure = true;
                 stopReason = `Chunk "${chunk.title}" failed`;
               }
-              return;
+              break;
             }
 
             // Handle review result
@@ -403,7 +409,7 @@ export async function POST(_request: Request, context: RouteContext) {
                       hasFailure = true;
                       stopReason = `Fix chunk "${fixChunk.title}" failed`;
                     }
-                    return;
+                    break;
                   }
 
                   // Check fix chunk review
@@ -416,7 +422,7 @@ export async function POST(_request: Request, context: RouteContext) {
                     failed++;
                     hasFailure = true;
                     stopReason = `Fix chunk "${fixChunk.title}" review failed`;
-                    return;
+                    break;
                   } else {
                     // needs_fix again - mark as completed for now to avoid infinite loop
                     completedIds.add(chunk.id);
@@ -428,13 +434,10 @@ export async function POST(_request: Request, context: RouteContext) {
                 failed++;
                 hasFailure = true;
                 stopReason = `Chunk "${chunk.title}" review failed`;
-                return;
+                break;
               }
             }
-          });
-
-          // Wait for all parallel chunks to complete
-          await Promise.all(runPromises);
+          }
         }
 
         if (stopReason) {
