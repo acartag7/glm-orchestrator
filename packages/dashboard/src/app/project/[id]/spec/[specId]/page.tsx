@@ -13,6 +13,7 @@ import ResizeHandle from '@/components/ResizeHandle';
 import { useExecution } from '@/hooks/useExecution';
 import { useRunAll } from '@/hooks/useRunAll';
 import { useWorkers } from '@/hooks/useWorkers';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface ChunkHistory {
   chunk: Chunk;
@@ -432,6 +433,7 @@ export default function SpecWorkspace() {
     || (isCurrentlyRunning ? null : (chunkHistory?.chunk.error || null));
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-neutral-950 flex flex-col bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]">
       {/* Header */}
       <header className="border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-sm sticky top-0 z-10">
@@ -632,5 +634,6 @@ export default function SpecWorkspace() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

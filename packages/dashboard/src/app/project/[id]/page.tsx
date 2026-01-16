@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import type { Project, Spec, SpecStatus } from '@glm/shared';
 import SpecCard from '@/components/SpecCard';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 interface SpecWithCounts extends Spec {
   chunkCount: number;
@@ -150,6 +151,7 @@ export default function ProjectPage() {
   const completedCount = specs.filter(s => s.status === 'completed' || s.status === 'merged').length;
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen bg-neutral-950 flex flex-col bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]">
       {/* Header */}
       <header className="border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-sm sticky top-0 z-10">
@@ -275,5 +277,6 @@ export default function ProjectPage() {
         )}
       </main>
     </div>
+    </ErrorBoundary>
   );
 }

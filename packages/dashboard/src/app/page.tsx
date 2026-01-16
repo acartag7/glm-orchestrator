@@ -8,6 +8,7 @@ import { useProjects } from '@/hooks/useProjects';
 import { useWorkers } from '@/hooks/useWorkers';
 import ProjectList from '@/components/ProjectList';
 import CreateProjectModal from '@/components/CreateProjectModal';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import type { ChunkStats } from '@/components/ProjectCard';
 
 export default function Home() {
@@ -85,6 +86,7 @@ export default function Home() {
   };
 
   return (
+    <ErrorBoundary>
     <main className="min-h-screen bg-neutral-950 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]">
       {/* Header */}
       <header className="border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-sm sticky top-0 z-10">
@@ -179,5 +181,6 @@ export default function Home() {
         isLoading={isCreating}
       />
     </main>
+    </ErrorBoundary>
   );
 }
