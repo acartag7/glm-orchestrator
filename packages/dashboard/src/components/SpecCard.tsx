@@ -14,7 +14,7 @@ interface SpecCardProps {
   onDelete?: (specId: string) => void;
 }
 
-const statusConfig: Record<SpecStatus, { icon: string; label: string; colors: string }> = {
+const statusConfig: Record<string, { icon: string; label: string; colors: string }> = {
   draft: {
     icon: '○',
     label: 'Draft',
@@ -24,6 +24,11 @@ const statusConfig: Record<SpecStatus, { icon: string; label: string; colors: st
     icon: '◉',
     label: 'Ready',
     colors: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
+  },
+  in_progress: {
+    icon: '◐',
+    label: 'In Progress',
+    colors: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
   },
   running: {
     icon: '◐',
@@ -47,8 +52,14 @@ const statusConfig: Record<SpecStatus, { icon: string; label: string; colors: st
   },
 };
 
+const defaultStatus = {
+  icon: '?',
+  label: 'Unknown',
+  colors: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
+};
+
 export default function SpecCard({ spec, projectId, onDelete }: SpecCardProps) {
-  const status = statusConfig[spec.status];
+  const status = statusConfig[spec.status] || defaultStatus;
   const hasChunks = spec.chunkCount > 0;
   const progress = hasChunks ? `${spec.completedChunkCount}/${spec.chunkCount}` : '0/0';
   const isRunning = spec.status === 'running';
