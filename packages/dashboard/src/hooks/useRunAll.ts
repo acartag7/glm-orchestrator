@@ -256,15 +256,6 @@ export function useRunAll(specId: string): UseRunAllReturn {
       eventSourceRef.current.close();
     }
 
-    // Create EventSource for SSE
-    const eventSource = new EventSource(`/api/specs/${specId}/run-all`, {
-      // POST method not supported by EventSource, need to use fetch
-    });
-
-    // Actually, EventSource only supports GET. We need to use fetch with POST.
-    // Close the EventSource and use fetch instead.
-    eventSource.close();
-
     try {
       const response = await fetch(`/api/specs/${specId}/run-all`, {
         method: 'POST',
