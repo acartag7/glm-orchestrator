@@ -2,8 +2,8 @@ import Database, { type Database as DatabaseType } from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import { existsSync, mkdirSync } from 'fs';
-import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP, MIGRATIONS_PHASE3_DEPS, MIGRATIONS_OUTPUT_SUMMARY } from '@glm/shared';
-import type { Project, Spec, Chunk, ChunkToolCall, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, SpecStatus, ReviewStatus } from '@glm/shared';
+import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP, MIGRATIONS_PHASE3_DEPS, MIGRATIONS_OUTPUT_SUMMARY, MIGRATIONS_PHASE4_WORKERS } from '@glm/shared';
+import type { Project, Spec, Chunk, ChunkToolCall, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, SpecStatus, ReviewStatus, Worker, WorkerStatus, WorkerQueueItem, WorkerProgress } from '@glm/shared';
 
 const DB_DIR = path.join(os.homedir(), '.glm-orchestrator');
 const DB_PATH = path.join(DB_DIR, 'orchestrator.db');
@@ -36,6 +36,9 @@ function getDb(): DatabaseType {
 
   // Run Output Summary migrations (add output_summary column to chunks table)
   runOutputSummaryMigrations(db);
+
+  // Run Phase 4 migrations (workers and queue tables)
+  runPhase4WorkersMigrations(db);
 
   return db;
 }
@@ -113,6 +116,25 @@ function runOutputSummaryMigrations(database: DatabaseType): void {
         // Column might already exist, ignore
         const message = err instanceof Error ? err.message : String(err);
         if (!message.includes('duplicate column')) {
+          console.warn(`Migration warning: ${message}`);
+        }
+      }
+    }
+  }
+}
+
+function runPhase4WorkersMigrations(database: DatabaseType): void {
+  // Check if workers table exists
+  const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='workers'`).all();
+
+  if (tables.length === 0) {
+    for (const migration of MIGRATIONS_PHASE4_WORKERS) {
+      try {
+        database.exec(migration);
+      } catch (err) {
+        // Table/index might already exist, ignore
+        const message = err instanceof Error ? err.message : String(err);
+        if (!message.includes('already exists')) {
           console.warn(`Migration warning: ${message}`);
         }
       }
@@ -752,6 +774,340 @@ export function deleteStudioState(projectId: string): boolean {
   const stmt = database.prepare(`DELETE FROM spec_studio_state WHERE project_id = ?`);
   const result = stmt.run(projectId);
   return result.changes > 0;
+}
+
+// ============================================================================
+// Worker Operations (Phase 4)
+// ============================================================================
+
+interface WorkerRow {
+  id: string;
+  spec_id: string;
+  project_id: string;
+  status: string;
+  current_chunk_id: string | null;
+  current_step: string | null;
+  progress_current: number;
+  progress_total: number;
+  progress_passed: number;
+  progress_failed: number;
+  started_at: number | null;
+  completed_at: number | null;
+  error: string | null;
+  // Joined fields
+  project_name?: string;
+  spec_title?: string;
+  chunk_title?: string;
+}
+
+function rowToWorker(row: WorkerRow): Worker {
+  return {
+    id: row.id,
+    specId: row.spec_id,
+    projectId: row.project_id,
+    status: row.status as WorkerStatus,
+    currentChunkId: row.current_chunk_id ?? undefined,
+    currentStep: (row.current_step as 'executing' | 'reviewing') ?? undefined,
+    progress: {
+      current: row.progress_current,
+      total: row.progress_total,
+      passed: row.progress_passed,
+      failed: row.progress_failed,
+    },
+    startedAt: row.started_at ?? undefined,
+    completedAt: row.completed_at ?? undefined,
+    error: row.error ?? undefined,
+    projectName: row.project_name,
+    specTitle: row.spec_title,
+    currentChunkTitle: row.chunk_title,
+  };
+}
+
+export function getAllWorkers(): Worker[] {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT w.*,
+           p.name as project_name,
+           s.title as spec_title,
+           c.title as chunk_title
+    FROM workers w
+    LEFT JOIN projects p ON w.project_id = p.id
+    LEFT JOIN specs s ON w.spec_id = s.id
+    LEFT JOIN chunks c ON w.current_chunk_id = c.id
+    ORDER BY w.started_at DESC
+  `);
+  return (stmt.all() as WorkerRow[]).map(rowToWorker);
+}
+
+export function getActiveWorkers(): Worker[] {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT w.*,
+           p.name as project_name,
+           s.title as spec_title,
+           c.title as chunk_title
+    FROM workers w
+    LEFT JOIN projects p ON w.project_id = p.id
+    LEFT JOIN specs s ON w.spec_id = s.id
+    LEFT JOIN chunks c ON w.current_chunk_id = c.id
+    WHERE w.status IN ('idle', 'running', 'paused')
+    ORDER BY w.started_at DESC
+  `);
+  return (stmt.all() as WorkerRow[]).map(rowToWorker);
+}
+
+export function getWorker(id: string): Worker | null {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT w.*,
+           p.name as project_name,
+           s.title as spec_title,
+           c.title as chunk_title
+    FROM workers w
+    LEFT JOIN projects p ON w.project_id = p.id
+    LEFT JOIN specs s ON w.spec_id = s.id
+    LEFT JOIN chunks c ON w.current_chunk_id = c.id
+    WHERE w.id = ?
+  `);
+  const row = stmt.get(id) as WorkerRow | undefined;
+  return row ? rowToWorker(row) : null;
+}
+
+export function getWorkerBySpec(specId: string): Worker | null {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT w.*,
+           p.name as project_name,
+           s.title as spec_title,
+           c.title as chunk_title
+    FROM workers w
+    LEFT JOIN projects p ON w.project_id = p.id
+    LEFT JOIN specs s ON w.spec_id = s.id
+    LEFT JOIN chunks c ON w.current_chunk_id = c.id
+    WHERE w.spec_id = ? AND w.status IN ('idle', 'running', 'paused')
+  `);
+  const row = stmt.get(specId) as WorkerRow | undefined;
+  return row ? rowToWorker(row) : null;
+}
+
+export function createWorker(specId: string, projectId: string): Worker {
+  const database = getDb();
+  const id = generateId();
+  const now = Date.now();
+
+  // Get total chunks for progress
+  const chunksStmt = database.prepare(`SELECT COUNT(*) as count FROM chunks WHERE spec_id = ?`);
+  const chunksResult = chunksStmt.get(specId) as { count: number };
+  const totalChunks = chunksResult.count;
+
+  const stmt = database.prepare(`
+    INSERT INTO workers (id, spec_id, project_id, status, progress_current, progress_total, progress_passed, progress_failed, started_at)
+    VALUES (?, ?, ?, 'idle', 0, ?, 0, 0, ?)
+  `);
+  stmt.run(id, specId, projectId, totalChunks, now);
+
+  return getWorker(id)!;
+}
+
+export function updateWorker(id: string, data: {
+  status?: WorkerStatus;
+  currentChunkId?: string | null;
+  currentStep?: 'executing' | 'reviewing' | null;
+  progress?: Partial<WorkerProgress>;
+  error?: string | null;
+}): Worker | null {
+  const database = getDb();
+  const existing = getWorker(id);
+  if (!existing) return null;
+
+  const now = Date.now();
+  const stmt = database.prepare(`
+    UPDATE workers
+    SET status = ?,
+        current_chunk_id = ?,
+        current_step = ?,
+        progress_current = ?,
+        progress_total = ?,
+        progress_passed = ?,
+        progress_failed = ?,
+        completed_at = CASE WHEN ? IN ('completed', 'failed') THEN ? ELSE completed_at END,
+        error = ?
+    WHERE id = ?
+  `);
+
+  const newStatus = data.status ?? existing.status;
+  const newProgress = {
+    current: data.progress?.current ?? existing.progress.current,
+    total: data.progress?.total ?? existing.progress.total,
+    passed: data.progress?.passed ?? existing.progress.passed,
+    failed: data.progress?.failed ?? existing.progress.failed,
+  };
+
+  stmt.run(
+    newStatus,
+    data.currentChunkId === null ? null : (data.currentChunkId ?? existing.currentChunkId ?? null),
+    data.currentStep === null ? null : (data.currentStep ?? existing.currentStep ?? null),
+    newProgress.current,
+    newProgress.total,
+    newProgress.passed,
+    newProgress.failed,
+    newStatus,
+    now,
+    data.error === null ? null : (data.error ?? existing.error ?? null),
+    id
+  );
+
+  return getWorker(id);
+}
+
+export function deleteWorker(id: string): boolean {
+  const database = getDb();
+  const stmt = database.prepare(`DELETE FROM workers WHERE id = ?`);
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+export function cleanupCompletedWorkers(): number {
+  const database = getDb();
+  // Delete workers that have been completed/failed for more than 1 hour
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const stmt = database.prepare(`
+    DELETE FROM workers
+    WHERE status IN ('completed', 'failed')
+    AND completed_at < ?
+  `);
+  const result = stmt.run(oneHourAgo);
+  return result.changes;
+}
+
+// ============================================================================
+// Worker Queue Operations (Phase 4)
+// ============================================================================
+
+interface QueueRow {
+  id: string;
+  spec_id: string;
+  project_id: string;
+  priority: number;
+  added_at: number;
+  // Joined fields
+  project_name?: string;
+  spec_title?: string;
+}
+
+function rowToQueueItem(row: QueueRow): WorkerQueueItem {
+  return {
+    id: row.id,
+    specId: row.spec_id,
+    projectId: row.project_id,
+    priority: row.priority,
+    addedAt: row.added_at,
+    projectName: row.project_name,
+    specTitle: row.spec_title,
+  };
+}
+
+export function getWorkerQueue(): WorkerQueueItem[] {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT q.*,
+           p.name as project_name,
+           s.title as spec_title
+    FROM worker_queue q
+    LEFT JOIN projects p ON q.project_id = p.id
+    LEFT JOIN specs s ON q.spec_id = s.id
+    ORDER BY q.priority DESC, q.added_at ASC
+  `);
+  return (stmt.all() as QueueRow[]).map(rowToQueueItem);
+}
+
+export function getQueueItem(id: string): WorkerQueueItem | null {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT q.*,
+           p.name as project_name,
+           s.title as spec_title
+    FROM worker_queue q
+    LEFT JOIN projects p ON q.project_id = p.id
+    LEFT JOIN specs s ON q.spec_id = s.id
+    WHERE q.id = ?
+  `);
+  const row = stmt.get(id) as QueueRow | undefined;
+  return row ? rowToQueueItem(row) : null;
+}
+
+export function getQueueItemBySpec(specId: string): WorkerQueueItem | null {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT q.*,
+           p.name as project_name,
+           s.title as spec_title
+    FROM worker_queue q
+    LEFT JOIN projects p ON q.project_id = p.id
+    LEFT JOIN specs s ON q.spec_id = s.id
+    WHERE q.spec_id = ?
+  `);
+  const row = stmt.get(specId) as QueueRow | undefined;
+  return row ? rowToQueueItem(row) : null;
+}
+
+export function addToQueue(specId: string, projectId: string, priority: number = 0): WorkerQueueItem {
+  const database = getDb();
+  const id = generateId();
+  const now = Date.now();
+
+  const stmt = database.prepare(`
+    INSERT INTO worker_queue (id, spec_id, project_id, priority, added_at)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  stmt.run(id, specId, projectId, priority, now);
+
+  return getQueueItem(id)!;
+}
+
+export function removeFromQueue(id: string): boolean {
+  const database = getDb();
+  const stmt = database.prepare(`DELETE FROM worker_queue WHERE id = ?`);
+  const result = stmt.run(id);
+  return result.changes > 0;
+}
+
+export function removeFromQueueBySpec(specId: string): boolean {
+  const database = getDb();
+  const stmt = database.prepare(`DELETE FROM worker_queue WHERE spec_id = ?`);
+  const result = stmt.run(specId);
+  return result.changes > 0;
+}
+
+export function getNextQueueItem(): WorkerQueueItem | null {
+  const database = getDb();
+  const stmt = database.prepare(`
+    SELECT q.*,
+           p.name as project_name,
+           s.title as spec_title
+    FROM worker_queue q
+    LEFT JOIN projects p ON q.project_id = p.id
+    LEFT JOIN specs s ON q.spec_id = s.id
+    ORDER BY q.priority DESC, q.added_at ASC
+    LIMIT 1
+  `);
+  const row = stmt.get() as QueueRow | undefined;
+  return row ? rowToQueueItem(row) : null;
+}
+
+export function reorderQueue(queueIds: string[]): void {
+  const database = getDb();
+  const stmt = database.prepare(`UPDATE worker_queue SET priority = ? WHERE id = ?`);
+
+  const transaction = database.transaction(() => {
+    // Higher priority = earlier in queue, so reverse the index
+    queueIds.forEach((queueId, index) => {
+      const priority = queueIds.length - index;
+      stmt.run(priority, queueId);
+    });
+  });
+
+  transaction();
 }
 
 export { getDb };

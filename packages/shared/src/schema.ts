@@ -249,3 +249,43 @@ export const MIGRATIONS_PHASE3_DEPS = [
 export const MIGRATIONS_OUTPUT_SUMMARY = [
   `ALTER TABLE chunks ADD COLUMN output_summary TEXT`,
 ];
+
+/**
+ * Migration queries for Phase 4 (Multiple GLM Workers)
+ * Adds workers and worker_queue tables
+ */
+export const MIGRATIONS_PHASE4_WORKERS = [
+  // Workers table
+  `CREATE TABLE IF NOT EXISTS workers (
+    id TEXT PRIMARY KEY,
+    spec_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    status TEXT DEFAULT 'idle',
+    current_chunk_id TEXT,
+    current_step TEXT,
+    progress_current INTEGER DEFAULT 0,
+    progress_total INTEGER DEFAULT 0,
+    progress_passed INTEGER DEFAULT 0,
+    progress_failed INTEGER DEFAULT 0,
+    started_at INTEGER,
+    completed_at INTEGER,
+    error TEXT,
+    FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+  )`,
+  // Worker queue
+  `CREATE TABLE IF NOT EXISTS worker_queue (
+    id TEXT PRIMARY KEY,
+    spec_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    priority INTEGER DEFAULT 0,
+    added_at INTEGER NOT NULL,
+    FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+  )`,
+  // Indexes
+  `CREATE INDEX IF NOT EXISTS idx_workers_status ON workers(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_workers_spec ON workers(spec_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_queue_priority ON worker_queue(priority DESC, added_at ASC)`,
+  `CREATE INDEX IF NOT EXISTS idx_queue_spec ON worker_queue(spec_id)`,
+];

@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Terminal } from 'lucide-react';
+import Link from 'next/link';
+import { Terminal, Cpu } from 'lucide-react';
 import { useProjects } from '@/hooks/useProjects';
+import { useWorkers } from '@/hooks/useWorkers';
 import ProjectList from '@/components/ProjectList';
 import CreateProjectModal from '@/components/CreateProjectModal';
 import type { ChunkStats } from '@/components/ProjectCard';
@@ -11,6 +13,7 @@ import type { ChunkStats } from '@/components/ProjectCard';
 export default function Home() {
   const router = useRouter();
   const { projects, isLoading, error, createProject, deleteProject } = useProjects();
+  const { state: workersState } = useWorkers();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -100,15 +103,29 @@ export default function Home() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-mono rounded-md transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            new project
-          </button>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/workers"
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-neutral-800/50 hover:bg-neutral-800 text-neutral-300 border border-neutral-700 text-xs font-mono rounded-md transition-colors"
+            >
+              <Cpu className="w-3.5 h-3.5" />
+              workers
+              {workersState.activeCount > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-medium bg-emerald-500/20 text-emerald-400 rounded-full">
+                  {workersState.activeCount}
+                </span>
+              )}
+            </Link>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-mono rounded-md transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              new project
+            </button>
+          </div>
         </div>
       </header>
 

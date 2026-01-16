@@ -672,3 +672,107 @@ export interface AnalyzeCodebaseOptions {
   maxEntriesPerDir?: number;
   maxFileSize?: number;
 }
+
+// ============================================================================
+// Worker Types (Phase 4)
+// ============================================================================
+
+export type WorkerStatus = 'idle' | 'running' | 'paused' | 'completed' | 'failed';
+
+export interface WorkerProgress {
+  current: number;
+  total: number;
+  passed: number;
+  failed: number;
+}
+
+export interface Worker {
+  id: string;
+  specId: string;
+  projectId: string;
+  status: WorkerStatus;
+  currentChunkId?: string;
+  currentStep?: 'executing' | 'reviewing';
+  progress: WorkerProgress;
+  startedAt?: number;
+  completedAt?: number;
+  error?: string;
+  // Denormalized for display
+  projectName?: string;
+  specTitle?: string;
+  currentChunkTitle?: string;
+}
+
+export interface WorkerQueueItem {
+  id: string;
+  specId: string;
+  projectId: string;
+  priority: number;
+  addedAt: number;
+  // Denormalized for display
+  projectName?: string;
+  specTitle?: string;
+}
+
+// Worker API types
+export interface CreateWorkerRequest {
+  specId: string;
+}
+
+export interface AddToQueueRequest {
+  specId: string;
+  priority?: number;
+}
+
+export interface ReorderQueueRequest {
+  queueIds: string[];
+}
+
+// Worker SSE Event Types
+export type WorkerEventType =
+  | 'worker_started'
+  | 'worker_progress'
+  | 'worker_chunk_start'
+  | 'worker_chunk_complete'
+  | 'worker_review_start'
+  | 'worker_review_complete'
+  | 'worker_paused'
+  | 'worker_resumed'
+  | 'worker_completed'
+  | 'worker_failed'
+  | 'worker_stopped'
+  | 'queue_updated';
+
+export interface WorkerEvent {
+  type: WorkerEventType;
+  workerId?: string;
+  timestamp: number;
+  data: Record<string, unknown>;
+}
+
+export interface WorkerStartedEvent {
+  worker: Worker;
+}
+
+export interface WorkerProgressEvent {
+  workerId: string;
+  progress: WorkerProgress;
+  currentChunkId?: string;
+  currentChunkTitle?: string;
+  currentStep?: 'executing' | 'reviewing';
+}
+
+export interface WorkerCompletedEvent {
+  workerId: string;
+  passed: number;
+  failed: number;
+}
+
+export interface WorkerFailedEvent {
+  workerId: string;
+  error: string;
+}
+
+export interface QueueUpdatedEvent {
+  queue: WorkerQueueItem[];
+}

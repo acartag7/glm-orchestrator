@@ -12,6 +12,7 @@ import SpecCompletePanel from '@/components/SpecCompletePanel';
 import ResizeHandle from '@/components/ResizeHandle';
 import { useExecution } from '@/hooks/useExecution';
 import { useRunAll } from '@/hooks/useRunAll';
+import { useWorkers } from '@/hooks/useWorkers';
 
 interface ChunkHistory {
   chunk: Chunk;
@@ -52,6 +53,7 @@ export default function SpecWorkspace() {
   const leftColumnRef = useRef<HTMLDivElement>(null);
 
   const { state: executionState, runChunk, abortChunk, reviewChunk, clearReview } = useExecution();
+  const { startWorker, state: workersState, addToQueue } = useWorkers();
 
   // Handle horizontal resize
   const handleHorizontalResize = useCallback((delta: number) => {
@@ -239,6 +241,27 @@ export default function SpecWorkspace() {
     // Refresh chunks after run all completes
     await refreshChunks();
   }, [startRunAll, refreshChunks]);
+
+  // Handle Run in Background (creates a worker)
+  const handleRunInBackground = useCallback(async () => {
+    try {
+      if (!workersState.hasCapacity) {
+        // Add to queue if at capacity
+        const result = await addToQueue(specId);
+        if (result) {
+          alert('Added to worker queue. Will start when a slot is available.');
+        }
+      } else {
+        const worker = await startWorker(specId);
+        if (worker) {
+          router.push('/workers');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to start background worker:', err);
+      alert(err instanceof Error ? err.message : 'Failed to start worker');
+    }
+  }, [specId, startWorker, addToQueue, workersState.hasCapacity, router]);
 
   // Handle closing Run All panel
   const handleCloseRunAll = useCallback(() => {
@@ -497,6 +520,17 @@ export default function SpecWorkspace() {
                 Run All
               </>
             )}
+          </button>
+          <button
+            onClick={handleRunInBackground}
+            disabled={runAllState.isRunning || executionState.isRunning || chunks.filter(c => c.status === 'pending' || c.status === 'failed' || c.status === 'cancelled').length === 0}
+            className="px-3 py-1.5 bg-neutral-800/50 text-neutral-300 border border-neutral-700 hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-md font-mono text-xs transition-colors flex items-center gap-1.5"
+            title="Run in background worker"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+            Background
           </button>
           {executionState.isRunning && (
             <div className="flex items-center gap-2 text-xs font-mono">
