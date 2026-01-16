@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Project, CreateProjectRequest } from '@glm/shared';
+import { useToast } from '@/components/Toast';
 
 interface UseProjectsReturn {
   projects: Project[];
@@ -16,6 +17,7 @@ export function useProjects(): UseProjectsReturn {
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const { addToast } = useToast();
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -56,17 +58,23 @@ export function useProjects(): UseProjectsReturn {
   }, []);
 
   const deleteProject = useCallback(async (id: string): Promise<void> => {
-    const response = await fetch(`/api/projects/${id}`, {
-      method: 'DELETE',
-    });
+    try {
+      const response = await fetch(`/api/projects/${id}`, {
+        method: 'DELETE',
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || 'Failed to delete project');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete project');
+      }
+
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete project';
+      addToast(`Failed to delete project: ${message}`, 'error');
+      throw err;
     }
-
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+  }, [addToast]);
 
   return {
     projects,
