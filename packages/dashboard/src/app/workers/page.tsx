@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Terminal, Cpu } from 'lucide-react';
 import { useWorkers } from '@/hooks/useWorkers';
 import WorkerDashboard from '@/components/WorkerDashboard';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 export default function WorkersPage() {
   const {
@@ -15,6 +16,7 @@ export default function WorkersPage() {
   } = useWorkers();
 
   return (
+    <ErrorBoundary>
     <main className="min-h-screen bg-neutral-950 flex flex-col bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]">
       {/* Header */}
       <header className="border-b border-neutral-800/80 bg-neutral-950/90 backdrop-blur-sm sticky top-0 z-10">
@@ -60,18 +62,32 @@ export default function WorkersPage() {
 
       {/* Content */}
       <div className="flex-1">
-        <WorkerDashboard
-          workers={state.workers}
-          queue={state.queue}
-          activeCount={state.activeCount}
-          maxWorkers={state.maxWorkers}
-          isConnected={state.isConnected}
-          onStopWorker={stopWorker}
-          onPauseWorker={pauseWorker}
-          onResumeWorker={resumeWorker}
-          onRemoveFromQueue={removeFromQueue}
-        />
+        {!state.isConnected ? (
+          <div className="flex flex-col items-center justify-center h-[60vh] gap-4">
+            <div className="relative">
+              <div className="w-10 h-10 border-2 border-neutral-700 rounded-full" />
+              <div className="absolute inset-0 w-10 h-10 border-2 border-emerald-500 rounded-full border-t-transparent animate-spin" />
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-mono text-neutral-400">connecting to worker stream...</p>
+              <p className="text-xs font-mono text-neutral-600 mt-1">establishing SSE connection</p>
+            </div>
+          </div>
+        ) : (
+          <WorkerDashboard
+            workers={state.workers}
+            queue={state.queue}
+            activeCount={state.activeCount}
+            maxWorkers={state.maxWorkers}
+            isConnected={state.isConnected}
+            onStopWorker={stopWorker}
+            onPauseWorker={pauseWorker}
+            onResumeWorker={resumeWorker}
+            onRemoveFromQueue={removeFromQueue}
+          />
+        )}
       </div>
     </main>
+    </ErrorBoundary>
   );
 }
