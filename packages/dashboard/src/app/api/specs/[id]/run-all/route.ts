@@ -54,15 +54,27 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-// Helper to send SSE event
+// Helper to send SSE event (safely handles closed controller)
 function sendEvent(
   controller: ReadableStreamDefaultController,
   encoder: TextEncoder,
+  isClosedRef: { value: boolean },
   eventType: string,
   data: Record<string, unknown>
 ): void {
-  const payload = JSON.stringify({ ...data, timestamp: Date.now() });
-  controller.enqueue(encoder.encode(`event: ${eventType}\ndata: ${payload}\n\n`));
+  if (isClosedRef.value) return; // Don't try to send if already closed
+
+  try {
+    const payload = JSON.stringify({ ...data, timestamp: Date.now() });
+    controller.enqueue(encoder.encode(`event: ${eventType}\ndata: ${payload}\n\n`));
+  } catch (err) {
+    // Controller was closed (user navigated away)
+    if (err instanceof TypeError && String(err).includes('Controller is already closed')) {
+      isClosedRef.value = true;
+    } else {
+      console.error('Error sending SSE event:', err);
+    }
+  }
 }
 
 // POST /api/specs/[id]/run-all
@@ -108,6 +120,9 @@ export async function POST(_request: Request, context: RouteContext) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      // Track if controller is closed (user navigated away)
+      const isClosedRef = { value: false };
+
       let passed = 0;
       let failed = 0;
       let fixes = 0;
@@ -127,7 +142,7 @@ export async function POST(_request: Request, context: RouteContext) {
         }
 
         // Send start event
-        sendEvent(controller, encoder, isFix ? 'fix_chunk_start' : 'chunk_start', {
+        sendEvent(controller, encoder, isClosedRef, isFix ? 'fix_chunk_start' : 'chunk_start', {
           chunkId,
           title,
           index,
@@ -137,7 +152,7 @@ export async function POST(_request: Request, context: RouteContext) {
         // Start execution
         const startResult = await startChunkExecution(chunkId);
         if (!startResult.success) {
-          sendEvent(controller, encoder, 'error', {
+          sendEvent(controller, encoder, isClosedRef, 'error', {
             chunkId,
             message: startResult.error || 'Failed to start chunk execution',
           });
@@ -148,7 +163,7 @@ export async function POST(_request: Request, context: RouteContext) {
         const completionResult = await waitForChunkCompletion(
           chunkId,
           (toolCall: ChunkToolCall) => {
-            sendEvent(controller, encoder, 'tool_call', {
+            sendEvent(controller, encoder, isClosedRef, 'tool_call', {
               chunkId,
               toolCall: {
                 id: toolCall.id,
@@ -167,7 +182,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
         // Handle execution result
         if (completionResult.status !== 'completed') {
-          sendEvent(controller, encoder, 'error', {
+          sendEvent(controller, encoder, isClosedRef, 'error', {
             chunkId,
             message: completionResult.error || `Chunk ${completionResult.status}`,
           });
@@ -175,18 +190,18 @@ export async function POST(_request: Request, context: RouteContext) {
         }
 
         // Send complete event
-        sendEvent(controller, encoder, isFix ? 'fix_chunk_complete' : 'chunk_complete', {
+        sendEvent(controller, encoder, isClosedRef, isFix ? 'fix_chunk_complete' : 'chunk_complete', {
           chunkId,
           output: completionResult.output || '',
         });
 
         // Now review the chunk
-        sendEvent(controller, encoder, 'review_start', { chunkId });
+        sendEvent(controller, encoder, isClosedRef, 'review_start', { chunkId });
 
         // Get updated chunk with output
         const updatedChunk = getChunk(chunkId);
         if (!updatedChunk) {
-          sendEvent(controller, encoder, 'error', {
+          sendEvent(controller, encoder, isClosedRef, 'error', {
             chunkId,
             message: 'Chunk not found after execution',
           });
@@ -201,7 +216,7 @@ export async function POST(_request: Request, context: RouteContext) {
           const reviewResult = await claudeClient.execute(reviewPrompt, { timeout: 120000 });
 
           if (!reviewResult.success) {
-            sendEvent(controller, encoder, 'error', {
+            sendEvent(controller, encoder, isClosedRef, 'error', {
               chunkId,
               message: `Review failed: ${reviewResult.output}`,
             });
@@ -211,7 +226,7 @@ export async function POST(_request: Request, context: RouteContext) {
           const parsedReview = parseReviewResult(reviewResult.output);
           if (!parsedReview) {
             // If review parsing fails, assume pass to continue
-            sendEvent(controller, encoder, 'review_complete', {
+            sendEvent(controller, encoder, isClosedRef, 'review_complete', {
               chunkId,
               status: 'pass',
               feedback: 'Review parsing failed, assuming pass',
@@ -238,7 +253,7 @@ export async function POST(_request: Request, context: RouteContext) {
             }
           }
 
-          sendEvent(controller, encoder, 'review_complete', {
+          sendEvent(controller, encoder, isClosedRef, 'review_complete', {
             chunkId,
             status: parsedReview.status,
             feedback: parsedReview.feedback,
@@ -247,7 +262,7 @@ export async function POST(_request: Request, context: RouteContext) {
 
           return { success: true, reviewResult: parsedReview, fixChunkId };
         } catch (error) {
-          sendEvent(controller, encoder, 'error', {
+          sendEvent(controller, encoder, isClosedRef, 'error', {
             chunkId,
             message: `Review error: ${error instanceof Error ? error.message : 'Unknown error'}`,
           });
@@ -376,7 +391,7 @@ export async function POST(_request: Request, context: RouteContext) {
         }
 
         if (stopReason) {
-          sendEvent(controller, encoder, 'stopped', { reason: stopReason });
+          sendEvent(controller, encoder, isClosedRef, 'stopped', { reason: stopReason });
         }
 
         // Check if all completed successfully
@@ -389,14 +404,14 @@ export async function POST(_request: Request, context: RouteContext) {
         }
 
         // Send final event
-        sendEvent(controller, encoder, 'all_complete', {
+        sendEvent(controller, encoder, isClosedRef, 'all_complete', {
           specId,
           passed,
           failed,
           fixes,
         });
       } catch (error) {
-        sendEvent(controller, encoder, 'error', {
+        sendEvent(controller, encoder, isClosedRef, 'error', {
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       } finally {
