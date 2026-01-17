@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAllProjects, createProject } from '@/lib/db';
+import { validateAndNormalizePath, PathValidationError } from '@/lib/path-validation';
 import type { CreateProjectRequest } from '@specwright/shared';
 
 // GET /api/projects - List all projects
@@ -35,9 +36,23 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate and normalize the directory path to prevent path traversal attacks
+    let normalizedDirectory: string;
+    try {
+      normalizedDirectory = validateAndNormalizePath(body.directory.trim());
+    } catch (error) {
+      if (error instanceof PathValidationError) {
+        return NextResponse.json(
+          { error: error.message },
+          { status: 400 }
+        );
+      }
+      throw error;
+    }
+
     const project = createProject({
       name: body.name.trim(),
-      directory: body.directory.trim(),
+      directory: normalizedDirectory,
       description: body.description?.trim(),
     });
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProject, updateProject, deleteProject, getSpecByProject } from '@/lib/db';
+import { validateAndNormalizePath, PathValidationError } from '@/lib/path-validation';
 import type { UpdateProjectRequest } from '@specwright/shared';
 
 interface RouteContext {
@@ -38,9 +39,25 @@ export async function PUT(request: Request, context: RouteContext) {
     const { id } = await context.params;
     const body = await request.json() as UpdateProjectRequest;
 
+    // Validate and normalize the directory path if provided
+    let normalizedDirectory: string | undefined;
+    if (body.directory) {
+      try {
+        normalizedDirectory = validateAndNormalizePath(body.directory.trim());
+      } catch (error) {
+        if (error instanceof PathValidationError) {
+          return NextResponse.json(
+            { error: error.message },
+            { status: 400 }
+          );
+        }
+        throw error;
+      }
+    }
+
     const project = updateProject(id, {
       name: body.name?.trim(),
-      directory: body.directory?.trim(),
+      directory: normalizedDirectory,
       description: body.description?.trim(),
     });
 
