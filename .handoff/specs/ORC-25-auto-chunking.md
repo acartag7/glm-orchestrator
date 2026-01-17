@@ -59,7 +59,7 @@ Create `packages/dashboard/src/app/api/specs/[id]/auto-chunk/route.ts`:
 ```typescript
 import { getSpec, insertChunk } from '@/lib/db';
 import { buildAutoChunkPrompt } from '@/lib/prompts';
-import { ClaudeClient } from '@glm/mcp/client';
+import { ClaudeClient } from '@specwright/mcp/client';
 
 export async function POST(
   _request: Request,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState, useCallback } from 'react';
-import type { Chunk, ChunkNode } from '@glm/shared';
+import type { Chunk, ChunkNode } from '@specwright/shared';
 import { calculateLayout, groupByLayers, calculateCriticalPath } from '@/lib/graph-layout';
 
 interface ChunkGraphProps {

@@ -17,7 +17,7 @@ export async function executeStage(
 
   for (const batch of batches) {
     console.error(
-      `[GLM Orchestrator] Executing batch of ${batch.length} task(s): ${batch.map((t) => t.name).join(", ")}`
+      `[Specwright] Executing batch of ${batch.length} task(s): ${batch.map((t) => t.name).join(", ")}`
     );
 
     const batchPromises = batch.map(async (task) => {
@@ -46,7 +46,7 @@ export async function executeStage(
 
     if (failed.length > 0) {
       console.error(
-        `[GLM Orchestrator] Stopping stage execution due to failed tasks: ${failed.join(", ")}`
+        `[Specwright] Stopping stage execution due to failed tasks: ${failed.join(", ")}`
       );
       break;
     }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getProject, getStudioState, createStudioState, updateStudioState } from '@/lib/db';
-import type { UpdateStudioStateRequest } from '@glm/shared';
+import type { UpdateStudioStateRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

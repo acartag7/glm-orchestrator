@@ -8,7 +8,7 @@
 import { NextResponse } from 'next/server';
 import { getOrchestrator } from '@/lib/worker-orchestrator';
 import { getSpec } from '@/lib/db';
-import type { CreateWorkerRequest } from '@glm/shared';
+import type { CreateWorkerRequest } from '@specwright/shared';
 
 // GET /api/workers
 export async function GET() {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Project, CreateProjectRequest } from '@glm/shared';
+import type { Project, CreateProjectRequest } from '@specwright/shared';
 import { useToast } from '@/components/Toast';
 
 interface UseProjectsReturn {

@@ -3,10 +3,10 @@ import path from 'path';
 import os from 'os';
 import { existsSync, mkdirSync } from 'fs';
 import { randomUUID } from 'crypto';
-import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP, MIGRATIONS_PHASE3_DEPS, MIGRATIONS_OUTPUT_SUMMARY, MIGRATIONS_PHASE4_WORKERS, MIGRATIONS_CONFIG_SYSTEM } from '@glm/shared';
-import type { Project, Spec, Chunk, ChunkToolCall, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, SpecStatus, ReviewStatus, Worker, WorkerStatus, WorkerQueueItem, WorkerProgress, ProjectConfig } from '@glm/shared';
+import { MVP_SCHEMA, MIGRATIONS_PHASE2, MIGRATIONS_REVIEW_LOOP, MIGRATIONS_PHASE3_DEPS, MIGRATIONS_OUTPUT_SUMMARY, MIGRATIONS_PHASE4_WORKERS, MIGRATIONS_CONFIG_SYSTEM } from '@specwright/shared';
+import type { Project, Spec, Chunk, ChunkToolCall, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, SpecStatus, ReviewStatus, Worker, WorkerStatus, WorkerQueueItem, WorkerProgress, ProjectConfig } from '@specwright/shared';
 
-const DB_DIR = path.join(os.homedir(), '.glm-orchestrator');
+const DB_DIR = path.join(os.homedir(), '.specwright');
 const DB_PATH = process.env.DB_PATH || path.join(DB_DIR, 'orchestrator.db');
 
 let db: DatabaseType | null = null;

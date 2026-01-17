@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getChunk, updateChunk, deleteChunk } from '@/lib/db';
-import type { UpdateChunkRequest } from '@glm/shared';
+import type { UpdateChunkRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string; chunkId: string }>;

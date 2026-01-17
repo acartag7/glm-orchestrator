@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import type { Project, Spec, SpecStatus } from '@glm/shared';
+import type { Project, Spec, SpecStatus } from '@specwright/shared';
 import SpecCard from '@/components/SpecCard';
 import ErrorBoundary from '@/components/ErrorBoundary';
 

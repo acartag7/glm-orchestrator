@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getAllProjects, createProject } from '@/lib/db';
-import type { CreateProjectRequest } from '@glm/shared';
+import type { CreateProjectRequest } from '@specwright/shared';
 
 // GET /api/projects - List all projects
 export async function GET() {

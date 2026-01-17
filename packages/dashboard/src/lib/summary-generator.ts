@@ -5,8 +5,8 @@
  * to be used as context for dependent chunks.
  */
 
-import { ClaudeClient } from '@glm/mcp/client';
-import type { Chunk } from '@glm/shared';
+import { ClaudeClient } from '@specwright/mcp/client';
+import type { Chunk } from '@specwright/shared';
 
 const SUMMARY_SYSTEM_PROMPT = `You are a technical summarizer. Your job is to create concise summaries of completed development tasks that can be used as context for subsequent tasks.
 

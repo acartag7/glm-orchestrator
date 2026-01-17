@@ -5,7 +5,7 @@
  * Similar to run-all but designed for background operation.
  */
 
-import type { Chunk, ReviewResult, ChunkToolCall, WorkerProgress } from '@glm/shared';
+import type { Chunk, ReviewResult, ChunkToolCall, WorkerProgress } from '@specwright/shared';
 import {
   getChunksBySpec,
   updateChunk,
@@ -18,7 +18,7 @@ import {
   waitForChunkCompletion,
   abortChunkExecution,
 } from './execution';
-import { ClaudeClient } from '@glm/mcp/client';
+import { ClaudeClient } from '@specwright/mcp/client';
 import { buildReviewPrompt, parseReviewResult } from './prompts';
 
 type WorkerEventCallback = (event: {

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'yaml';
 import * as http from 'node:http';
-import { ProjectConfig, DEFAULT_PROJECT_CONFIG, getConfigPath, ExecutorConfig, PlannerConfig, ReviewerConfig } from '@glm/shared';
+import { ProjectConfig, DEFAULT_PROJECT_CONFIG, getConfigPath, ExecutorConfig, PlannerConfig, ReviewerConfig } from '@specwright/shared';
 
 export class ConfigValidationError extends Error {
   constructor(public field: string, message: string) {
@@ -54,23 +54,23 @@ function parseEnvOverrides(): Partial<ProjectConfig> {
   const env = process.env;
 
   const executor: Partial<ExecutorConfig> = {};
-  if (env.GLM_EXECUTOR_TYPE) {
-    executor.type = env.GLM_EXECUTOR_TYPE as 'opencode' | 'claude-code';
+  if (env.SPECWRIGHT_EXECUTOR_TYPE) {
+    executor.type = env.SPECWRIGHT_EXECUTOR_TYPE as 'opencode' | 'claude-code';
   }
-  if (env.GLM_EXECUTOR_ENDPOINT) {
-    executor.endpoint = env.GLM_EXECUTOR_ENDPOINT;
+  if (env.SPECWRIGHT_EXECUTOR_ENDPOINT) {
+    executor.endpoint = env.SPECWRIGHT_EXECUTOR_ENDPOINT;
   }
-  if (env.GLM_EXECUTOR_MODEL) {
-    executor.model = env.GLM_EXECUTOR_MODEL;
+  if (env.SPECWRIGHT_EXECUTOR_MODEL) {
+    executor.model = env.SPECWRIGHT_EXECUTOR_MODEL;
   }
-  if (env.GLM_EXECUTOR_TIMEOUT) {
-    const timeout = parseInt(env.GLM_EXECUTOR_TIMEOUT, 10);
+  if (env.SPECWRIGHT_EXECUTOR_TIMEOUT) {
+    const timeout = parseInt(env.SPECWRIGHT_EXECUTOR_TIMEOUT, 10);
     if (!isNaN(timeout)) {
       executor.timeout = timeout;
     }
   }
-  if (env.GLM_EXECUTOR_MAX_TOKENS) {
-    const maxTokens = parseInt(env.GLM_EXECUTOR_MAX_TOKENS, 10);
+  if (env.SPECWRIGHT_EXECUTOR_MAX_TOKENS) {
+    const maxTokens = parseInt(env.SPECWRIGHT_EXECUTOR_MAX_TOKENS, 10);
     if (!isNaN(maxTokens)) {
       executor.maxTokens = maxTokens;
     }
@@ -80,32 +80,32 @@ function parseEnvOverrides(): Partial<ProjectConfig> {
   }
 
   const planner: Partial<PlannerConfig> = {};
-  if (env.GLM_PLANNER_TYPE) {
-    planner.type = env.GLM_PLANNER_TYPE as 'opus' | 'sonnet';
+  if (env.SPECWRIGHT_PLANNER_TYPE) {
+    planner.type = env.SPECWRIGHT_PLANNER_TYPE as 'opus' | 'sonnet';
   }
-  if (env.GLM_PLANNER_CLI_PATH) {
-    planner.cliPath = env.GLM_PLANNER_CLI_PATH;
+  if (env.SPECWRIGHT_PLANNER_CLI_PATH) {
+    planner.cliPath = env.SPECWRIGHT_PLANNER_CLI_PATH;
   }
   if (Object.keys(planner).length > 0) {
     overrides.planner = planner as PlannerConfig;
   }
 
   const reviewer: Partial<ReviewerConfig> = {};
-  if (env.GLM_REVIEWER_TYPE) {
-    reviewer.type = env.GLM_REVIEWER_TYPE as 'sonnet-quick' | 'opus-thorough';
+  if (env.SPECWRIGHT_REVIEWER_TYPE) {
+    reviewer.type = env.SPECWRIGHT_REVIEWER_TYPE as 'sonnet-quick' | 'opus-thorough';
   }
-  if (env.GLM_REVIEWER_CLI_PATH) {
-    reviewer.cliPath = env.GLM_REVIEWER_CLI_PATH;
+  if (env.SPECWRIGHT_REVIEWER_CLI_PATH) {
+    reviewer.cliPath = env.SPECWRIGHT_REVIEWER_CLI_PATH;
   }
-  if (env.GLM_REVIEWER_AUTO_APPROVE) {
-    reviewer.autoApprove = env.GLM_REVIEWER_AUTO_APPROVE.toLowerCase() === 'true';
+  if (env.SPECWRIGHT_REVIEWER_AUTO_APPROVE) {
+    reviewer.autoApprove = env.SPECWRIGHT_REVIEWER_AUTO_APPROVE.toLowerCase() === 'true';
   }
   if (Object.keys(reviewer).length > 0) {
     overrides.reviewer = reviewer as ReviewerConfig;
   }
 
-  if (env.GLM_MAX_ITERATIONS) {
-    const maxIterations = parseInt(env.GLM_MAX_ITERATIONS, 10);
+  if (env.SPECWRIGHT_MAX_ITERATIONS) {
+    const maxIterations = parseInt(env.SPECWRIGHT_MAX_ITERATIONS, 10);
     if (!isNaN(maxIterations)) {
       overrides.maxIterations = maxIterations;
     }

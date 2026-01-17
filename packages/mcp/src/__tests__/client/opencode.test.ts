@@ -6,6 +6,7 @@ import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { OpencodeClient } from "../../client/opencode.js";
+import type { SessionStatus, ToolCallEvent } from "@specwright/shared";
 
 // Mock server setup
 const mockServer = setupServer();
@@ -135,7 +136,7 @@ describe("OpencodeClient", () => {
       const client = new OpencodeClient();
 
       const unsubscribe = client.subscribeToEvents({
-        onSessionStatus: (sessionId, status) => {
+        onSessionStatus: (sessionId: string, status: SessionStatus) => {
           statusUpdates.push({ sessionId, status });
         },
         onToolCall: () => {},
@@ -192,7 +193,7 @@ describe("OpencodeClient", () => {
 
       const unsubscribe = client.subscribeToEvents({
         onSessionStatus: () => {},
-        onToolCall: (sessionId, toolCall) => {
+        onToolCall: (sessionId: string, toolCall: ToolCallEvent) => {
           toolCalls.push({ sessionId, tool: toolCall.tool, state: toolCall.state });
         },
         onTextChunk: () => {},

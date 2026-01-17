@@ -1,5 +1,5 @@
 /**
- * @glm/shared - Shared types and utilities for GLM Orchestrator
+ * @specwright/shared - Shared types and utilities for Specwright
  */
 
 export * from "./types.js";

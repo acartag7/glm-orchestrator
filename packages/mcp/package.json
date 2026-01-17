@@ -1,7 +1,7 @@
 {
-  "name": "@glm/mcp",
+  "name": "@specwright/mcp",
   "version": "2.0.0",
-  "description": "MCP server that lets Claude delegate coding tasks to GLM-4.7 and Opus",
+  "description": "MCP server for Specwright - spec-driven development platform",
   "type": "module",
   "main": "dist/index.js",
   "exports": {
@@ -9,10 +9,10 @@
     "./client": "./dist/client/index.js"
   },
   "bin": {
-    "glm-orchestrator": "dist/index.js"
+    "specwright": "dist/index.js"
   },
   "publishConfig": {
-    "name": "glm-orchestrator"
+    "name": "specwright"
   },
   "files": [
     "dist",
@@ -31,20 +31,20 @@
   "keywords": [
     "mcp",
     "claude",
-    "glm",
+    "specwright",
     "opencode",
     "ai",
-    "orchestrator",
+    "spec-driven",
     "model-context-protocol"
   ],
   "author": "Arnold Cartagena",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/acartag7/glm-orchestrator.git"
+    "url": "git+https://github.com/acartag7/specwright.git"
   },
   "dependencies": {
-    "@glm/shared": "workspace:*",
+    "@specwright/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.0",
     "zod": "^4.3.5"

@@ -1,6 +1,6 @@
 'use client';
 
-import type { Question } from '@glm/shared';
+import type { Question } from '@specwright/shared';
 import QuestionField from './QuestionField';
 
 interface QuestionsStepProps {

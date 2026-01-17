@@ -5,6 +5,7 @@ node_modules/
 dist/
 .next/
 .turbo/
+*.tsbuildinfo
 
 # IDE
 .idea/
@@ -30,6 +31,10 @@ test-*.txt
 .env.local
 .env.*.local
 
-# GLM temp files
+# Local config (contains user-specific paths)
+.mcp.json
+
+# Temp files
 .glm-*
+.specwright-*
 test-glm.sh

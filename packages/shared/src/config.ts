@@ -49,5 +49,5 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
 
 export const getConfigPath = (projectId: string): string => {
   const homeDir = process.env.HOME || process.env.USERPROFILE || '~';
-  return path.join(homeDir, '.glm-orchestrator', 'projects', projectId, 'config.yaml');
+  return path.join(homeDir, '.specwright', 'projects', projectId, 'config.yaml');
 };

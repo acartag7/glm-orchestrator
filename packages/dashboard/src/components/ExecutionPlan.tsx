@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import type { Chunk } from '@glm/shared';
+import type { Chunk } from '@specwright/shared';
 import { buildExecutionPlan, calculateLayout, calculateCriticalPath, groupByLayers } from '@/lib/graph-layout';
 
 interface ExecutionPlanProps {

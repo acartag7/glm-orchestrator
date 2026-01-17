@@ -1,11 +1,11 @@
-# Spec-Driven Development Platform
+# Specwright - Spec-Driven Development Platform
 
 ## What This Is
 
 A web-based tool for AI-assisted software development where you:
 1. Write specs with Opus assistance
 2. Break specs into executable chunks
-3. Run chunks with GLM while watching progress
+3. Run chunks with executor (opencode/GLM) while watching progress
 4. Review and iterate
 
 **Not** an MCP server. **Not** a Cursor/Windsurf competitor. A personal tool for structured AI development.
@@ -56,7 +56,7 @@ Running a chunk through GLM. Shows live tool calls via SSE.
 pnpm install
 
 # Run dashboard
-pnpm --filter @glm/dashboard dev
+pnpm --filter @specwright/dashboard dev
 
 # Build all
 pnpm build
@@ -84,28 +84,30 @@ pnpm build            # Build all packages
 pnpm test             # Run tests
 
 # Dashboard only
-pnpm --filter @glm/dashboard dev
-pnpm --filter @glm/dashboard build
+pnpm --filter @specwright/dashboard dev
+pnpm --filter @specwright/dashboard build
 ```
 
 ## Database
 
-SQLite stored at `~/.glm-orchestrator/orchestrator.db`
+SQLite stored at `~/.specwright/orchestrator.db`
 
 Tables: `projects`, `specs`, `chunks`, `tool_calls`
 
 ## AI Integration
 
 ### Opus (Planning/Review)
+
 ```typescript
-import { ClaudeClient } from '@glm/mcp';
+import { ClaudeClient } from '@specwright/mcp';
 const client = new ClaudeClient();
 await client.executePrompt(prompt, workingDir);
 ```
 
-### GLM (Execution)
+### Executor (opencode/GLM)
+
 ```typescript
-import { OpencodeClient } from '@glm/mcp';
+import { OpencodeClient } from '@specwright/mcp';
 const client = new OpencodeClient();
 // Uses HTTP API at localhost:4096
 ```

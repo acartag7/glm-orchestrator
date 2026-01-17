@@ -49,7 +49,7 @@ Create `packages/dashboard/src/components/EditChunkModal.tsx`:
 'use client';
 
 import { useState } from 'react';
-import type { Chunk } from '@glm/shared';
+import type { Chunk } from '@specwright/shared';
 
 interface EditChunkModalProps {
   chunk: Chunk;

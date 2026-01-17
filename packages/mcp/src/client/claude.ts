@@ -15,7 +15,7 @@ import type {
   ClaudeToolResult,
   ToolCallRecord,
   TokenUsage,
-} from "@glm/shared";
+} from "@specwright/shared";
 
 const DEFAULT_MODEL = "claude-opus-4-5-20251101";
 const DEFAULT_TIMEOUT_MS = 300000; // 5 minutes

@@ -15,7 +15,7 @@ export async function executeChunksSequentially(
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
-    console.error(`[GLM Orchestrator] Executing chunk ${i + 1}/${chunks.length}`);
+    console.error(`[Specwright] Executing chunk ${i + 1}/${chunks.length}`);
 
     const context = buildContext(results, filesCreated, specContent);
 
@@ -57,7 +57,7 @@ Steps:
       const currentFiles = await getProjectFiles(workingDirectory);
       filesCreated = currentFiles.filter((f) => !initialFiles.includes(f));
 
-      console.error(`[GLM Orchestrator] Chunk ${i + 1} failed: ${error}`);
+      console.error(`[Specwright] Chunk ${i + 1} failed: ${error}`);
     }
   }
 

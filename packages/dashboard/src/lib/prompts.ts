@@ -2,7 +2,7 @@
  * Shared prompt templates for AI review operations
  */
 
-import type { ReviewResult, ReviewStatus } from '@glm/shared';
+import type { ReviewResult, ReviewStatus } from '@specwright/shared';
 
 export const REVIEW_PROMPT_TEMPLATE = `You are reviewing the output of an AI coding assistant that just completed a task.
 

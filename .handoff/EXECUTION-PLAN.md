@@ -66,7 +66,7 @@ cd /Users/acartagena/project/orchestrator
 # 3. Test manually in browser (http://localhost:4740)
 # 4. Commit when working
 
-pnpm --filter @glm/dashboard dev  # Run the dashboard
+pnpm --filter @specwright/dashboard dev  # Run the dashboard
 ```
 
 ---
@@ -96,7 +96,7 @@ This is the first feature we can build USING the orchestrator:
 
 ```
 Sprint 3: Configuration
-├── 3.1 Create config types in @glm/shared
+├── 3.1 Create config types in @specwright/shared
 ├── 3.2 Create config loader (lib/config-loader.ts)
 ├── 3.3 Create config API routes
 ├── 3.4 Add config UI to Spec Studio
@@ -293,7 +293,7 @@ rules:
 
 ```bash
 # Development
-pnpm --filter @glm/dashboard dev    # Run dashboard on :4740
+pnpm --filter @specwright/dashboard dev    # Run dashboard on :4740
 pnpm build                           # Build all packages
 pnpm test                            # Run tests (when added)
 
@@ -334,7 +334,7 @@ codexbar usage --json | jq .
 
 1. **Read this file first** - It's the master plan
 2. **Start with Phase A** - Fix dogfooding blockers manually
-3. **Test after each fix** - Run `pnpm --filter @glm/dashboard dev`
+3. **Test after each fix** - Run `pnpm --filter @specwright/dashboard dev`
 4. **Commit frequently** - Small, focused commits
 5. **After Phase A+B** - Start using orchestrator to build Phase C+
 

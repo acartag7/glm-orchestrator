@@ -1,6 +1,6 @@
-# Spec-Driven Development Platform
+# Specwright - Spec-Driven Development Platform
 
-A web-based tool for structured AI-assisted software development.
+A web-based tool for structured AI-assisted software development. "Specwright" = one who crafts specs.
 
 ## What It Does
 
@@ -52,13 +52,13 @@ A web-based tool for structured AI-assisted software development.
 ### Install & Run
 
 ```bash
-git clone https://github.com/acartag7/glm-orchestrator.git
-cd glm-orchestrator
+git clone https://github.com/acartag7/specwright.git
+cd specwright
 pnpm install
 pnpm build
 
 # Start the dashboard
-pnpm --filter @glm/dashboard dev
+pnpm --filter @specwright/dashboard dev
 # Opens at http://localhost:4740
 ```
 
@@ -141,7 +141,7 @@ packages/
 pnpm install
 
 # Run dashboard in dev mode
-pnpm --filter @glm/dashboard dev
+pnpm --filter @specwright/dashboard dev
 
 # Build all packages
 pnpm build

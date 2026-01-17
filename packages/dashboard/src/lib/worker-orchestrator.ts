@@ -5,7 +5,7 @@
  * Singleton pattern - one orchestrator per process.
  */
 
-import type { Worker, WorkerQueueItem, WorkerEvent, WorkerProgress } from '@glm/shared';
+import type { Worker, WorkerQueueItem, WorkerEvent, WorkerProgress } from '@specwright/shared';
 import {
   getAllWorkers,
   getActiveWorkers,

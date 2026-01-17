@@ -50,7 +50,7 @@ Create `packages/dashboard/src/components/SpecEditor.tsx`:
 'use client';
 
 import { useState } from 'react';
-import type { Spec } from '@glm/shared';
+import type { Spec } from '@specwright/shared';
 
 interface SpecEditorProps {
   spec: Spec;

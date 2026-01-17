@@ -26,10 +26,10 @@ importers:
 
   packages/dashboard:
     dependencies:
-      '@glm/mcp':
+      '@specwright/mcp':
         specifier: workspace:*
         version: link:../mcp
-      '@glm/shared':
+      '@specwright/shared':
         specifier: workspace:*
         version: link:../shared
       better-sqlite3:
@@ -81,12 +81,12 @@ importers:
 
   packages/mcp:
     dependencies:
-      '@glm/shared':
-        specifier: workspace:*
-        version: link:../shared
       '@modelcontextprotocol/sdk':
         specifier: ^1.0.0
         version: 1.25.2(hono@4.11.4)(zod@4.3.5)
+      '@specwright/shared':
+        specifier: workspace:*
+        version: link:../shared
       better-sqlite3:
         specifier: ^12.6.0
         version: 12.6.0

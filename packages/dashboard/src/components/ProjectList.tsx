@@ -1,6 +1,6 @@
 'use client';
 
-import type { Project } from '@glm/shared';
+import type { Project } from '@specwright/shared';
 import ProjectCard, { type ChunkStats } from './ProjectCard';
 import { Terminal } from 'lucide-react';
 

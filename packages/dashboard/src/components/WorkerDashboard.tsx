@@ -1,6 +1,6 @@
 'use client';
 
-import type { Worker, WorkerQueueItem } from '@glm/shared';
+import type { Worker, WorkerQueueItem } from '@specwright/shared';
 import WorkerCard from './WorkerCard';
 import WorkerQueueList from './WorkerQueueList';
 

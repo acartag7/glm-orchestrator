@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import type { Spec } from '@glm/shared';
+import type { Spec } from '@specwright/shared';
 
 interface SpecEditorProps {
   spec: Spec;

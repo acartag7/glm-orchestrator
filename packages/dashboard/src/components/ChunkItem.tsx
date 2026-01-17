@@ -1,6 +1,6 @@
 'use client';
 
-import type { Chunk, ReviewStatus } from '@glm/shared';
+import type { Chunk, ReviewStatus } from '@specwright/shared';
 
 interface ChunkItemProps {
   chunk: Chunk;

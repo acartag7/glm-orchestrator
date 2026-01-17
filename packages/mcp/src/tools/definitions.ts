@@ -1,5 +1,5 @@
 /**
- * MCP Tool Definitions for GLM Orchestrator v2
+ * MCP Tool Definitions for Specwright v2
  */
 
 export const toolDefinitions = [

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { Chunk, ChunkToolCall, ChunkStatus, ReviewResult, ReviewStatus } from '@glm/shared';
+import type { Chunk, ChunkToolCall, ChunkStatus, ReviewResult, ReviewStatus } from '@specwright/shared';
 
 interface ExecutionPanelProps {
   chunk: Chunk | null;

@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "glm-orchestrator": {
-      "command": "node",
-      "args": ["/Users/acartagena/project/orchestrator/dist/index.js"]
-    }
-  }
-}

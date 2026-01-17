@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import { existsSync, mkdirSync } from 'fs';
 import { getProject } from '@/lib/db';
 import { getCodebaseContext, formatCodebaseContext } from '@/lib/codebase-analyzer';
-import { ClaudeClient } from '@glm/mcp/client';
-import type { GenerateQuestionsRequest, Question } from '@glm/shared';
+import { ClaudeClient } from '@specwright/mcp/client';
+import type { GenerateQuestionsRequest, Question } from '@specwright/shared';
 
 // Ensure directory exists, create if needed
 function ensureDirectory(dir: string): string {

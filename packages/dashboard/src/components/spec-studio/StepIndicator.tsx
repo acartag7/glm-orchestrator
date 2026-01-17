@@ -1,6 +1,6 @@
 'use client';
 
-import type { SpecStudioStep } from '@glm/shared';
+import type { SpecStudioStep } from '@specwright/shared';
 
 interface StepIndicatorProps {
   currentStep: SpecStudioStep;

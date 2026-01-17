@@ -47,7 +47,7 @@ Create `packages/cli/package.json`:
 
 ```json
 {
-  "name": "@glm/cli",
+  "name": "@specwright/cli",
   "version": "0.1.0",
   "description": "CLI for GLM Orchestrator",
   "bin": {

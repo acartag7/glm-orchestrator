@@ -16,8 +16,8 @@ import {
   hasActiveRunAllSession,
 } from '@/lib/execution';
 import { buildReviewPrompt, parseReviewResult } from '@/lib/prompts';
-import { ClaudeClient } from '@glm/mcp/client';
-import type { ChunkToolCall, Chunk, ReviewResult } from '@glm/shared';
+import { ClaudeClient } from '@specwright/mcp/client';
+import type { ChunkToolCall, Chunk, ReviewResult } from '@specwright/shared';
 
 /**
  * Find chunks that can run (all dependencies completed)

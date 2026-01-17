@@ -1,6 +1,6 @@
 'use client';
 
-import type { Worker } from '@glm/shared';
+import type { Worker } from '@specwright/shared';
 
 interface WorkerCardProps {
   worker: Worker;

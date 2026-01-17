@@ -6,7 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { reorderQueue, getWorkerQueue } from '@/lib/db';
-import type { ReorderQueueRequest } from '@glm/shared';
+import type { ReorderQueueRequest } from '@specwright/shared';
 
 // POST /api/queue/reorder
 export async function POST(request: Request) {

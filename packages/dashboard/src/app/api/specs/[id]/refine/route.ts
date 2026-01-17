@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSpec, getProject, updateSpec } from '@/lib/db';
-import { ClaudeClient } from '@glm/mcp/client';
-import type { RefineSpecRequest } from '@glm/shared';
+import { ClaudeClient } from '@specwright/mcp/client';
+import type { RefineSpecRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

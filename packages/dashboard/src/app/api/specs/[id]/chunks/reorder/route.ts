@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSpec, reorderChunks, getChunksBySpec } from '@/lib/db';
-import type { ReorderChunksRequest } from '@glm/shared';
+import type { ReorderChunksRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

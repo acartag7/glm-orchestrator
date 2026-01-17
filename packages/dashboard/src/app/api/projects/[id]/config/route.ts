@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getProjectConfig, saveProjectConfig, validateConfig, validateExecutor, validatePlanner, validateReviewer, ConfigValidationError } from '@/lib/config-loader';
 import { getProject, getDb } from '@/lib/db';
-import { ProjectConfig } from '@glm/shared';
+import { ProjectConfig } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

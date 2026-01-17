@@ -103,7 +103,7 @@ export async function runImplementationStage(
     try {
       specContent = await readFile(specFile, "utf-8");
     } catch (e) {
-      console.error(`[GLM Orchestrator] Could not read spec: ${e}`);
+      console.error(`[Specwright] Could not read spec: ${e}`);
     }
   }
 
@@ -178,7 +178,7 @@ export async function runImplementationStage(
   };
 
   console.error(
-    `[GLM Orchestrator] Starting implementation with ${tasks.length} tasks`
+    `[Specwright] Starting implementation with ${tasks.length} tasks`
   );
 
   const batches = getExecutionOrder(tasks);

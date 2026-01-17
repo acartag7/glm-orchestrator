@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChunkToolCall, ReviewStatus } from '@glm/shared';
+import type { ChunkToolCall, ReviewStatus } from '@specwright/shared';
 
 interface ChunkStatus {
   chunkId: string;

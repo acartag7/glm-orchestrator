@@ -1,5 +1,5 @@
 /**
- * Shared types for GLM Orchestrator
+ * Shared types for Specwright
  */
 
 // ============================================================================

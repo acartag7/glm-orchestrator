@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import type { Chunk } from '@glm/shared';
+import type { Chunk } from '@specwright/shared';
 
 interface DependencyEditorProps {
   chunk: Chunk;

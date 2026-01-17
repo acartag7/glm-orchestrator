@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { Question } from '@glm/shared';
+import type { Question } from '@specwright/shared';
 
 interface QuestionFieldProps {
   question: Question;

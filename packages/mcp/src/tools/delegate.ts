@@ -1,7 +1,7 @@
 /**
- * Delegation tools for GLM and Opus execution
+ * Delegation tools for executor (opencode/GLM) and planner (Opus) execution
  *
- * v2: Uses HTTP API for GLM and CLI for Opus with real-time event streaming
+ * v2: Uses HTTP API for executor and CLI for planner with real-time event streaming
  */
 
 import { readFile } from "fs/promises";
@@ -19,10 +19,10 @@ import {
   recordToolCallWithState,
   updateTaskSession,
 } from "../lib/db.js";
-import type { ToolCallEvent, SessionStatus } from "@glm/shared";
+import type { ToolCallEvent, SessionStatus } from "@specwright/shared";
 
 // Feature flag for v2 HTTP API
-const USE_HTTP_API = process.env.GLM_USE_HTTP_API !== "false";
+const USE_HTTP_API = process.env.SPECWRIGHT_USE_HTTP_API !== "false";
 
 // Default timeouts
 const DEFAULT_GLM_TIMEOUT = 180000;  // 3 minutes
@@ -81,13 +81,13 @@ async function delegateToGLMViaHttp(
 
     // Subscribe to events for this session
     const sessionHandler = client.createSessionHandler(session.id, {
-      onSessionStatus: (_, status: SessionStatus) => {
+      onSessionStatus: (_id: string, status: SessionStatus) => {
         console.error(`[GLM] Status: ${status}`);
         if (status === "idle") {
           completed = true;
         }
       },
-      onToolCall: (_, toolCall: ToolCallEvent) => {
+      onToolCall: (_id: string, toolCall: ToolCallEvent) => {
         console.error(`[GLM] Tool: ${toolCall.tool} (${toolCall.state})`);
         toolCalls.push(toolCall);
 
@@ -101,10 +101,10 @@ async function delegateToGLMViaHttp(
           toolCall.output || null
         );
       },
-      onTextChunk: (_, text: string) => {
+      onTextChunk: (_id: string, text: string) => {
         textOutput = text; // Latest full text
       },
-      onComplete: () => {
+      onComplete: (_id: string) => {
         completed = true;
       },
     });

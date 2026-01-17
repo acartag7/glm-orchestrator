@@ -1,6 +1,6 @@
 'use client';
 
-import type { ProjectConfig } from '@glm/shared';
+import type { ProjectConfig } from '@specwright/shared';
 
 interface ConfigStepProps {
   config: ProjectConfig;

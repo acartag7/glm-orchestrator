@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import type { Spec, SpecStatus } from '@glm/shared';
+import type { Spec, SpecStatus } from '@specwright/shared';
 
 interface SpecWithCounts extends Spec {
   chunkCount: number;

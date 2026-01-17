@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getChunk, updateChunk, insertFixChunk, getSpec } from '@/lib/db';
 import { buildReviewPrompt, parseReviewResult } from '@/lib/prompts';
-import { ClaudeClient } from '@glm/mcp/client';
+import { ClaudeClient } from '@specwright/mcp/client';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

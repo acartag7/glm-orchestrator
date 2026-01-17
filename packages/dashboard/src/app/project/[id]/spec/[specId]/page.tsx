@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import type { Project, Spec, Chunk, ChunkToolCall } from '@glm/shared';
+import type { Project, Spec, Chunk, ChunkToolCall } from '@specwright/shared';
 import SpecEditor from '@/components/SpecEditor';
 import ChunkList from '@/components/ChunkList';
 import ExecutionPanel from '@/components/ExecutionPanel';

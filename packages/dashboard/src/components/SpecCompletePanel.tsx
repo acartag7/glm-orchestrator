@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Spec, Project } from '@glm/shared';
+import type { Spec, Project } from '@specwright/shared';
 
 interface GitStatus {
   isGitRepo: boolean;

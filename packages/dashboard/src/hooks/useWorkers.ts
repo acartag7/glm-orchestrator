@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Worker, WorkerQueueItem, WorkerEvent } from '@glm/shared';
+import type { Worker, WorkerQueueItem, WorkerEvent } from '@specwright/shared';
 
 interface WorkersState {
   workers: Worker[];

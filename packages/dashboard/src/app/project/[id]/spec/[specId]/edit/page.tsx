@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import type { Project, Spec } from '@glm/shared';
+import type { Project, Spec } from '@specwright/shared';
 import SpecStudioWizard from '@/components/spec-studio/SpecStudioWizard';
 
 interface ProjectData {

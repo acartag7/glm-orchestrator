@@ -1,5 +1,5 @@
 /**
- * GLM Orchestrator MCP Server v2
+ * Specwright MCP Server v4
  *
  * Delegates coding tasks to GLM-4.7 (via opencode HTTP API)
  * and planning/review tasks to Opus (via Claude CLI)
@@ -31,7 +31,7 @@ import {
 import { registerServer, startHeartbeat } from "./lib/db.js";
 
 const server = new Server(
-  { name: "glm-orchestrator", version: "4.0.0" },
+  { name: "specwright", version: "4.0.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -182,7 +182,7 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`GLM Orchestrator MCP server v4.0 running (${serverId})`);
+  console.error(`Specwright MCP server v4.0 running (${serverId})`);
 }
 
 main().catch(console.error);

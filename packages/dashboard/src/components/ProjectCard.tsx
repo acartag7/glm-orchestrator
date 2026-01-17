@@ -1,6 +1,6 @@
 'use client';
 
-import type { Project } from '@glm/shared';
+import type { Project } from '@specwright/shared';
 import Link from 'next/link';
 import { Play, Trash2 } from 'lucide-react';
 

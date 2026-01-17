@@ -673,7 +673,7 @@ This enables:
 
 | Task | Description | Files |
 |------|-------------|-------|
-| Create config types | ProjectConfig, SpecConfig, VerificationConfig | `@glm/shared/types.ts` |
+| Create config types | ProjectConfig, SpecConfig, VerificationConfig | `@specwright/shared/types.ts` |
 | Config loader | Read/merge YAML configs | `lib/config-loader.ts` |
 | Config API | GET/PUT project config | `api/projects/[id]/config/route.ts` |
 | Config UI | Dropdowns in Spec Studio step 4 | `spec-studio/ChunksStep.tsx` |
@@ -692,7 +692,7 @@ This enables:
 
 | Task | Description | Files |
 |------|-------------|-------|
-| Review types | ReviewResult, ReviewIssue | `@glm/shared/types.ts` |
+| Review types | ReviewResult, ReviewIssue | `@specwright/shared/types.ts` |
 | Review prompt | Structured template with checks | `lib/review-prompt.ts` |
 | Tiered reviews | Quick (Sonnet) vs Deep (Opus) | `lib/reviewer.ts` |
 | Review UI | Show issues with file/line | `components/ReviewPanel.tsx` |
@@ -702,7 +702,7 @@ This enables:
 
 | Task | Description | Files |
 |------|-------------|-------|
-| Iteration schema | chunk_iterations table | `@glm/shared/schema.ts`, `db.ts` |
+| Iteration schema | chunk_iterations table | `@specwright/shared/schema.ts`, `db.ts` |
 | Iteration tracking | Create/update iterations | `db.ts` |
 | Execution loop | while (iteration < max) | `lib/ralph-executor.ts` |
 | Rollback logic | git reset on failure | `lib/ralph-executor.ts` |

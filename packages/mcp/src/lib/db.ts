@@ -1,5 +1,5 @@
 /**
- * Database module for GLM Orchestrator v2
+ * Database module for Specwright
  *
  * Extended schema with:
  * - session_id, model_id, provider_id on tasks
@@ -14,7 +14,7 @@ import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
 import { basename } from "path";
 
-const DB_DIR = join(homedir(), ".glm-orchestrator");
+const DB_DIR = join(homedir(), ".specwright");
 const DB_PATH = join(DB_DIR, "orchestrator.db");
 
 // Ensure directory exists

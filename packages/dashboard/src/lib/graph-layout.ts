@@ -4,7 +4,7 @@
  * Uses topological sort to assign layers, then groups nodes by layer.
  */
 
-import type { Chunk, ChunkNode, ChunkGraph } from '@glm/shared';
+import type { Chunk, ChunkNode, ChunkGraph } from '@specwright/shared';
 
 /**
  * Compute dependents for each chunk (reverse of dependencies)

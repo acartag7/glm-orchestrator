@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSpecByProject, updateSpec } from '@/lib/db';
-import type { UpdateSpecRequest } from '@glm/shared';
+import type { UpdateSpecRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

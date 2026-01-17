@@ -1,5 +1,5 @@
 /**
- * SQLite schema definitions for GLM Orchestrator
+ * SQLite schema definitions for Specwright
  */
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getSpec, getChunksBySpec, createChunk } from '@/lib/db';
-import type { CreateChunkRequest } from '@glm/shared';
+import type { CreateChunkRequest } from '@specwright/shared';
 
 interface RouteContext {
   params: Promise<{ id: string }>;

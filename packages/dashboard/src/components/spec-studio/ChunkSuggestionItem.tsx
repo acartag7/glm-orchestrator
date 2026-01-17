@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { ChunkSuggestion } from '@glm/shared';
+import type { ChunkSuggestion } from '@specwright/shared';
 
 interface ChunkSuggestionItemProps {
   chunk: ChunkSuggestion;

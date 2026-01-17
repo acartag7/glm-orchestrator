@@ -1,6 +1,6 @@
 'use client';
 
-import type { WorkerQueueItem } from '@glm/shared';
+import type { WorkerQueueItem } from '@specwright/shared';
 
 interface WorkerQueueListProps {
   queue: WorkerQueueItem[];

@@ -5,7 +5,7 @@
  * so GLM knows what previous work was accomplished.
  */
 
-import type { Chunk, Spec } from '@glm/shared';
+import type { Chunk, Spec } from '@specwright/shared';
 
 interface ChunkPromptOptions {
   includeSpecContent?: boolean;

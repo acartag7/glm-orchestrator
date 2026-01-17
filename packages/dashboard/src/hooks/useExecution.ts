@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Chunk, ChunkToolCall, ChunkStatus, ReviewResult, ReviewStatus } from '@glm/shared';
+import type { Chunk, ChunkToolCall, ChunkStatus, ReviewResult, ReviewStatus } from '@specwright/shared';
 
 interface ExecutionState {
   isRunning: boolean;

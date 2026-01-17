@@ -22,7 +22,7 @@ A web-based tool where you write specs with AI assistance, break them into chunk
 - [x] MVP spec written
 - [x] **Day 1: Foundation**
   - [x] New MVP database schema (projects, specs, chunks, chunk_tool_calls)
-  - [x] Shared MVP types in @glm/shared
+  - [x] Shared MVP types in @specwright/shared
   - [x] Project CRUD API routes
   - [x] Project list UI (home page)
   - [x] Create Project modal
@@ -341,7 +341,7 @@ GET    /api/events/[chunkId]      # SSE stream for specific chunk
 
 ### Day 1: Foundation ✅
 - [x] Create new database schema (drop old tables)
-- [x] Create shared types in `@glm/shared`
+- [x] Create shared types in `@specwright/shared`
 - [x] Set up API routes structure
 - [x] Project CRUD (API + basic UI)
 
@@ -595,7 +595,7 @@ Build a 4-step guided wizard for AI-assisted spec creation that replaces the raw
 
 ### Data Model
 
-#### New Types (`@glm/shared`)
+#### New Types (`@specwright/shared`)
 
 ```typescript
 // Spec Studio state (persisted across sessions)
@@ -1211,7 +1211,7 @@ bg-emerald-500/10 text-emerald-400 border border-emerald-500/20
     <div className="h-7 w-7 rounded-md bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
       <Terminal className="h-3.5 w-3.5 text-emerald-400" />
     </div>
-    <span className="font-mono text-sm font-medium text-neutral-300">glm-orchestrator</span>
+    <span className="font-mono text-sm font-medium text-neutral-300">specwright</span>
   </div>
   <div className="flex items-center gap-2 text-sm">
     <span className="text-neutral-500">/</span>
@@ -1618,7 +1618,7 @@ POST /api/specs/[id]/git/pr        # Create PR from spec
 | Task | Description | Files |
 |------|-------------|-------|
 | Add spec status columns | status, branch_name, pr_number, pr_url | `db.ts` schema |
-| Update Spec type | Add new fields | `@glm/shared` |
+| Update Spec type | Add new fields | `@specwright/shared` |
 | Create specs list API | GET /api/projects/[id]/specs | `api/projects/[id]/specs/route.ts` |
 | Create spec detail API | GET/PUT/DELETE /api/specs/[id] | `api/specs/[id]/route.ts` |
 | Update project page | Show specs list, "New Spec" button | `app/project/[id]/page.tsx` |

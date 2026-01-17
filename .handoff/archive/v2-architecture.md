@@ -63,8 +63,8 @@ packages:
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
-    "dev:mcp": "pnpm --filter @glm/mcp dev",
-    "dev:dashboard": "pnpm --filter @glm/dashboard dev",
+    "dev:mcp": "pnpm --filter @specwright/mcp dev",
+    "dev:dashboard": "pnpm --filter @specwright/dashboard dev",
     "lint": "turbo lint",
     "test": "turbo test"
   },
@@ -93,9 +93,9 @@ packages:
 ```
 
 ### Package Names
-- `@glm/mcp` → publishes as `glm-orchestrator` on npm
-- `@glm/dashboard` → not published (web app)
-- `@glm/shared` → internal package, not published
+- `@specwright/mcp` → publishes as `specwright` on npm
+- `@specwright/dashboard` → not published (web app)
+- `@specwright/shared` → internal package, not published
 
 ### Migration Steps
 1. Create new monorepo structure
@@ -104,7 +104,7 @@ packages:
 4. Extract shared types to `packages/shared/`
 5. Update imports to use workspace packages
 6. Update CI/CD for monorepo (turbo)
-7. Update npm publish config for `@glm/mcp`
+7. Update npm publish config for `@specwright/mcp`
 
 ---
 

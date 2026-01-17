@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Spec, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, ProjectConfig } from '@glm/shared';
-import { DEFAULT_PROJECT_CONFIG } from '@glm/shared';
+import type { Spec, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, ProjectConfig } from '@specwright/shared';
+import { DEFAULT_PROJECT_CONFIG } from '@specwright/shared';
 import StepIndicator from './StepIndicator';
 import IntentStep from './IntentStep';
 import QuestionsStep from './QuestionsStep';

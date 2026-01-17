@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import type { RunAllState, RunAllProgress, RunAllEvent, ReviewStatus, ChunkToolCall } from '@glm/shared';
+import type { RunAllState, RunAllProgress, RunAllEvent, ReviewStatus, ChunkToolCall } from '@specwright/shared';
 
 const initialProgress: RunAllProgress = {
   current: 0,

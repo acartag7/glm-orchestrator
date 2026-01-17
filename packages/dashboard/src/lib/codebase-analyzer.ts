@@ -16,7 +16,7 @@ import type {
   KeyFile,
   TypeDefinition,
   ComponentInfo,
-} from '@glm/shared';
+} from '@specwright/shared';
 
 // Directories to skip when building structure
 const DEFAULT_SKIP_DIRS = [
