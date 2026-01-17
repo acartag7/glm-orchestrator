@@ -6,13 +6,27 @@
 
 import { OpencodeClient } from '@specwright/mcp/client';
 import type { Project, Spec, Chunk, ChunkToolCall, ToolCallEvent, EventHandler, ProjectConfig } from '@specwright/shared';
-import { DEFAULT_PROJECT_CONFIG } from '@specwright/shared';
+import { DEFAULT_PROJECT_CONFIG, DEFAULT_CHUNK_TIMEOUT_MS } from '@specwright/shared';
 import { getChunk, updateChunk, createToolCall, updateToolCall, getProject, getSpec, getChunksBySpec } from './db';
 import { buildPromptForChunk } from './prompt-builder';
 import { generateChunkSummary, generateQuickSummary } from './summary-generator';
 
-const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 const MAX_BUFFER_SIZE = 1000; // Maximum events to buffer for late subscribers
+
+/**
+ * Get chunk execution timeout from environment variable or default
+ * Can be overridden with CHUNK_TIMEOUT_MS env var
+ */
+export function getChunkTimeout(): number {
+  const envTimeout = process.env.CHUNK_TIMEOUT_MS;
+  if (envTimeout) {
+    const parsed = parseInt(envTimeout, 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return DEFAULT_CHUNK_TIMEOUT_MS;
+}
 
 interface ActiveExecution {
   chunkId: string;
@@ -20,6 +34,7 @@ interface ActiveExecution {
   directory: string;
   startedAt: number;
   timeoutId: NodeJS.Timeout;
+  warningTimeoutId?: NodeJS.Timeout;
   client: OpencodeClient;
   unsubscribe: () => void;
   listeners: Set<(event: ExecutionEvent) => void>;
@@ -213,9 +228,13 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
   // Get project config or use defaults
   const config: ProjectConfig = project.config ?? DEFAULT_PROJECT_CONFIG;
 
+  // Use worktree path if available (ORC-29), otherwise use project directory
+  const workingDirectory = spec.worktreePath || project.directory;
+
   // Log config at execution start
   console.log(`[Execution] Starting chunk: ${chunk.title}`);
   console.log(`[Execution] Config: Executor=${config.executor.type}@${config.executor.endpoint || 'default'}, Model=${config.executor.model || 'default'}, MaxIterations=${config.maxIterations}`);
+  console.log(`[Execution] Working directory: ${workingDirectory}`);
 
   // Build prompt with dependency context
   const prompt = await buildChunkPromptWithContext(spec, chunk);
@@ -236,16 +255,31 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
       return { success: false, error: 'Claude Code executor is not yet implemented.' };
     }
 
-    // Create session
-    const session = await client.createSession(project.directory, `Chunk: ${chunk.title}`);
+    // Create session with worktree path if available
+    const session = await client.createSession(workingDirectory, `Chunk: ${chunk.title}`);
 
     // Update chunk status
     updateChunk(chunkId, { status: 'running' });
 
     // Set up timeout from config
+    const timeoutMs = config.executor.timeout || getChunkTimeout();
     const timeoutId = setTimeout(() => {
       handleTimeout(chunkId);
-    }, config.executor.timeout || DEFAULT_TIMEOUT_MS);
+    }, timeoutMs);
+
+    // Set up 80% warning
+    const warningTimeoutId = setTimeout(() => {
+      const timeoutMinutes = Math.floor(timeoutMs / 60000);
+      console.warn('[TIMEOUT WARNING]', {
+        chunkId,
+        specId: chunk.specId,
+        chunkTitle: chunk.title,
+        elapsed: Math.floor(timeoutMs * 0.8 / 1000),
+        remaining: Math.floor(timeoutMs * 0.2 / 1000),
+        message: `Chunk execution at 80% of timeout (${timeoutMinutes} min total)`,
+        timestamp: new Date().toISOString()
+      });
+    }, timeoutMs * 0.8);
 
     // Create event handler
     const eventHandler: EventHandler = {
@@ -299,9 +333,10 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
     activeExecutions.set(chunkId, {
       chunkId,
       sessionId: session.id,
-      directory: project.directory,
+      directory: workingDirectory,
       startedAt: Date.now(),
       timeoutId,
+      warningTimeoutId,
       client,
       unsubscribe,
       listeners,
@@ -310,7 +345,7 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
     });
 
     // Send prompt with config
-    await client.sendPrompt(session.id, project.directory, {
+    await client.sendPrompt(session.id, workingDirectory, {
       parts: [{ type: 'text', text: prompt }],
       model: {
         providerID: 'zai-coding-plan',
@@ -453,7 +488,10 @@ function handleToolCall(chunkId: string, toolCall: ToolCallEvent): void {
 
 // Helper: Handle timeout
 function handleTimeout(chunkId: string): void {
-  cleanup(chunkId, 'failed', 'Execution timed out');
+  const execution = activeExecutions.get(chunkId);
+  const timeoutMs = execution ? (Date.now() - execution.startedAt) : getChunkTimeout();
+  const timeoutMinutes = Math.floor(timeoutMs / 60000);
+  cleanup(chunkId, 'failed', `Execution timed out after ${timeoutMinutes} minutes`);
 }
 
 // Helper: Handle error
@@ -475,6 +513,7 @@ function cleanup(chunkId: string, status: 'completed' | 'failed' | 'cancelled', 
 
   // Clear timeout
   clearTimeout(execution.timeoutId);
+  if (execution.warningTimeoutId) clearTimeout(execution.warningTimeoutId);
 
   // Unsubscribe from events
   execution.unsubscribe();
@@ -492,6 +531,24 @@ function cleanup(chunkId: string, status: 'completed' | 'failed' | 'cancelled', 
   }
 
   const finalOutput = output || execution.textOutput || undefined;
+
+  // Calculate execution duration for analytics
+  const duration = Date.now() - execution.startedAt;
+  const timeoutMs = getChunkTimeout();
+  const utilizationPercent = ((duration / timeoutMs) * 100).toFixed(2);
+
+  console.log('[EXECUTION ANALYTICS]', {
+    chunkId,
+    specId: getChunk(chunkId)?.specId,
+    chunkTitle: getChunk(chunkId)?.title,
+    status,
+    durationMs: duration,
+    durationSeconds: (duration / 1000).toFixed(2),
+    durationMinutes: (duration / 60000).toFixed(2),
+    timeoutMs,
+    utilizationPercent,
+    timestamp: new Date().toISOString()
+  });
 
   // Update chunk
   updateChunk(chunkId, {
