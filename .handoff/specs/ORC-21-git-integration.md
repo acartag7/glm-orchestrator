@@ -135,10 +135,42 @@ if (commitHash) {
 resetHard(cwd);
 ```
 
-**In finally block:**
+**In finally block (on success):**
 
 ```typescript
 } finally {
+  // If all chunks completed successfully, create PR
+  if (completedCount === totalChunks) {
+    try {
+      // Push branch to remote
+      spawnSync('git', ['push', '-u', 'origin', specBranch], { cwd, encoding: 'utf-8' });
+
+      // Create PR using gh CLI
+      const prResult = spawnSync('gh', [
+        'pr', 'create',
+        '--title', `Spec: ${spec.title}`,
+        '--body', `Automated PR for spec execution.\n\n${completedCount} chunks completed successfully.\n\nSpec: ${spec.title}`,
+        '--base', originalBranch
+      ], { cwd, encoding: 'utf-8' });
+
+      const prUrl = prResult.stdout.trim();
+      if (prUrl) {
+        updateSpec(specId, { prUrl });
+        sendEvent({
+          type: 'pr_created',
+          url: prUrl,
+          message: `Pull request created: ${prUrl}`
+        });
+      }
+    } catch (error) {
+      console.error('[Git] Failed to create PR:', error);
+      sendEvent({
+        type: 'pr_creation_failed',
+        message: 'Failed to create PR. You can create it manually.'
+      });
+    }
+  }
+
   // Switch back to original branch
   if (originalBranch) {
     switchBranch(cwd, originalBranch);
@@ -148,29 +180,102 @@ resetHard(cwd);
 }
 ```
 
+### 4. Add PR Creation Helper
+
+In `packages/dashboard/src/lib/git.ts`:
+
+```typescript
+export function pushBranch(cwd: string, branchName: string): { success: boolean; error?: string } {
+  const result = spawnSync('git', ['push', '-u', 'origin', branchName], {
+    cwd,
+    encoding: 'utf-8'
+  });
+
+  if (result.status !== 0) {
+    return { success: false, error: result.stderr };
+  }
+
+  return { success: true };
+}
+
+export function createPullRequest(
+  cwd: string,
+  title: string,
+  body: string,
+  baseBranch: string
+): { success: boolean; url?: string; error?: string } {
+  const result = spawnSync('gh', [
+    'pr', 'create',
+    '--title', title,
+    '--body', body,
+    '--base', baseBranch
+  ], { cwd, encoding: 'utf-8' });
+
+  if (result.status !== 0) {
+    return { success: false, error: result.stderr };
+  }
+
+  const prUrl = result.stdout.trim();
+  return { success: true, url: prUrl };
+}
+```
+
+### 5. Show PR Link in UI
+
+**File:** `packages/dashboard/src/components/SpecCard.tsx`
+
+```typescript
+{spec.prUrl && (
+  <a
+    href={spec.prUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="inline-flex items-center gap-1 text-sm text-emerald-400 hover:text-emerald-300"
+  >
+    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+      <path fillRule="evenodd" d="M6 2a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V7.414A2 2 0 0015.414 6L12 2.586A2 2 0 0010.586 2H6zm5 6a1 1 0 10-2 0v3.586l-1.293-1.293a1 1 0 10-1.414 1.414l3 3a1 1 0 001.414 0l3-3a1 1 0 00-1.414-1.414L11 11.586V8z" clipRule="evenodd" />
+    </svg>
+    View PR
+  </a>
+)}
+```
+
 ## Files to Modify
 
-- CREATE: `packages/dashboard/src/lib/git.ts`
-- MODIFY: `packages/dashboard/src/lib/db.ts` (add migrations)
-- MODIFY: `packages/shared/src/types.ts` (add fields)
-- MODIFY: `packages/dashboard/src/app/api/specs/[id]/run-all/route.ts`
+- **packages/dashboard/src/lib/git.ts** (ALREADY EXISTS - add pushBranch and createPullRequest)
+- **packages/dashboard/src/lib/db.ts** (add migrations for branch_name, original_branch, pr_url)
+- **packages/shared/src/types.ts** (add branchName, originalBranch, prUrl to Spec interface)
+- **packages/dashboard/src/app/api/specs/[id]/run-all/route.ts** (integrate git workflow)
+- **packages/dashboard/src/components/SpecCard.tsx** (show PR link)
 
 ## Dependencies
 
-- Blocked by: ORC-30 (Command injection fix - must use spawnSync, not execSync with interpolation)
+- ✅ ORC-30 (Command injection fix - DONE, git.ts already uses spawnSync)
+- **ORC-44** (Require git/gh CLI) - Users need gh CLI installed
 
 ## Testing
 
 1. Create a spec with 3 chunks
-2. Run all - verify branch created, commits made
+2. Run all - verify:
+   - Branch created: `spec/{slug}`
+   - Commits made after each chunk
+   - No uncommitted changes
 3. Intentionally fail a chunk - verify git reset happens
-4. Complete successfully - verify clean commit history
+4. Complete successfully - verify:
+   - Branch pushed to remote
+   - PR created automatically
+   - PR link shown in UI
+   - Switched back to original branch
 
 ## Acceptance Criteria
 
 - [ ] Branch created on spec start: `spec/{slug}`
 - [ ] Commit after each successful chunk
 - [ ] Git reset on chunk failure
+- [ ] All chunks succeed → branch pushed to remote
+- [ ] PR created automatically with spec details
+- [ ] PR URL stored and displayed in UI
 - [ ] Switch back to original branch when done
 - [ ] Branch name stored in spec record
 - [ ] Commit hash stored in chunk record
+- [ ] Works with existing git.ts implementation
