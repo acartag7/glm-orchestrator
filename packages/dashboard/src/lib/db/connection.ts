@@ -324,20 +324,26 @@ function runSpecStudioStateMigrations(database: DatabaseType): void {
 }
 
 function runGitIntegrationMigrations(database: DatabaseType): void {
-  // Check if migration is needed by checking if 'original_branch' column exists on specs
+  // Check if migration is needed by checking both columns
   const specsTableInfo = database.prepare(`PRAGMA table_info(specs)`).all() as { name: string }[];
-  const hasOriginalBranchColumn = specsTableInfo.some(col => col.name === 'original_branch');
+  const chunksTableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
 
-  if (!hasOriginalBranchColumn) {
-    for (const migration of MIGRATIONS_GIT_INTEGRATION) {
-      try {
-        database.exec(migration);
-      } catch (err) {
-        // Column might already exist, ignore
-        const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes('duplicate column')) {
-          console.warn(`Migration warning: ${message}`);
-        }
+  const hasOriginalBranchColumn = specsTableInfo.some(col => col.name === 'original_branch');
+  const hasCommitHashColumn = chunksTableInfo.some(col => col.name === 'commit_hash');
+
+  // Only skip if BOTH columns exist
+  if (hasOriginalBranchColumn && hasCommitHashColumn) {
+    return;
+  }
+
+  for (const migration of MIGRATIONS_GIT_INTEGRATION) {
+    try {
+      database.exec(migration);
+    } catch (err) {
+      // Column might already exist, ignore
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes('duplicate column')) {
+        console.warn(`Migration warning: ${message}`);
       }
     }
   }

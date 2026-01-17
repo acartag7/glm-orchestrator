@@ -415,6 +415,13 @@ export async function POST(_request: Request, context: RouteContext) {
                       commitHash: commitResult.commitHash,
                       filesChanged: commitResult.filesChanged,
                     });
+                  } else if (!commitResult.success) {
+                    // Commit failed - reset to clean state and emit failure event
+                    resetHard(projectDir);
+                    sendEvent(controller, encoder, isClosedRef, 'git_commit_failed', {
+                      chunkId: chunk.id,
+                      error: commitResult.error || 'Failed to commit changes',
+                    });
                   }
                 }
                 completedIds.add(chunk.id);
@@ -457,6 +464,13 @@ export async function POST(_request: Request, context: RouteContext) {
                           chunkId: result.fixChunkId,
                           commitHash: commitResult.commitHash,
                           filesChanged: commitResult.filesChanged,
+                        });
+                      } else if (!commitResult.success) {
+                        // Commit failed - reset to clean state and emit failure event
+                        resetHard(projectDir);
+                        sendEvent(controller, encoder, isClosedRef, 'git_commit_failed', {
+                          chunkId: result.fixChunkId,
+                          error: commitResult.error || 'Failed to commit fix changes',
                         });
                       }
                     }
@@ -576,7 +590,25 @@ export async function POST(_request: Request, context: RouteContext) {
       } finally {
         // Git: Always switch back to original branch
         if (gitEnabled && projectDir && originalBranch) {
-          checkoutBranch(projectDir, originalBranch);
+          try {
+            const switched = checkoutBranch(projectDir, originalBranch);
+            if (!switched) {
+              console.warn(`[Git] Failed to switch back to original branch '${originalBranch}' in project '${projectDir}'. You may still be on the spec branch.`);
+              sendEvent(controller, encoder, isClosedRef, 'git_branch_restore_failed', {
+                originalBranch,
+                projectDir,
+                message: `Failed to switch back to branch '${originalBranch}'`,
+              });
+            }
+          } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            console.warn(`[Git] Error switching back to original branch '${originalBranch}' in project '${projectDir}': ${errorMessage}`);
+            sendEvent(controller, encoder, isClosedRef, 'git_branch_restore_failed', {
+              originalBranch,
+              projectDir,
+              error: errorMessage,
+            });
+          }
         }
         endRunAllSession(specId);
         controller.close();

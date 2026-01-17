@@ -160,14 +160,25 @@ export async function getGitStatus(directory: string): Promise<GitStatus> {
 }
 
 /**
- * Generate a branch name from spec ID and title
+ * Generate a slug from a title string
+ * Produces a URL-safe, lowercase string with hyphens
  */
-export function generateBranchName(specId: string, title: string): string {
+function slugify(title: string, maxLength: number = 40): string {
   const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 40);
+    .replace(/^-+|-+$/g, '')  // Remove leading/trailing hyphens
+    .slice(0, maxLength);
+
+  // Return fallback if slug is empty
+  return slug || 'untitled';
+}
+
+/**
+ * Generate a branch name from spec ID and title
+ */
+export function generateBranchName(specId: string, title: string): string {
+  const slug = slugify(title, 40);
   return `spec/${specId.slice(0, 8)}-${slug}`;
 }
 
@@ -500,12 +511,19 @@ export function hasUncommittedChanges(directory: string): boolean {
 /**
  * Generate a branch name slug from spec title
  * Returns: spec/{slug} (max 50 chars total)
+ * Ensures the branch name is valid per git standards
  */
 export function generateSpecBranchName(specTitle: string): string {
-  const slug = specTitle
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 44); // Leave room for "spec/" prefix
-  return `spec/${slug}`;
+  // Use shared slugify function (leave room for "spec/" prefix)
+  const slug = slugify(specTitle, 44);
+  const branchName = `spec/${slug}`;
+
+  // Validate the generated branch name
+  const validation = validateBranchName(branchName);
+  if (!validation.valid) {
+    // If validation fails, use a safe fallback
+    return 'spec/untitled';
+  }
+
+  return branchName;
 }
