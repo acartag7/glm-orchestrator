@@ -46,6 +46,7 @@ export default function ProjectCard({ project, chunkStats, onDelete, onRunAll }:
             {onRunAll && hasChunks && chunkStats.completed < chunkStats.total && (
               <button
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onRunAll(project.id);
                 }}
@@ -58,6 +59,7 @@ export default function ProjectCard({ project, chunkStats, onDelete, onRunAll }:
             {onDelete && (
               <button
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   onDelete(project.id);
                 }}

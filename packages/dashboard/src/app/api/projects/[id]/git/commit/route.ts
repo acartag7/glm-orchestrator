@@ -3,6 +3,7 @@ import { existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { getProject } from '@/lib/db';
 import { ClaudeClient } from '@specwright/mcp/client';
+import { createCommit, checkGitRepo } from '@/lib/git';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -40,12 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     // Check if git repo exists
-    try {
-      execSync('git rev-parse --is-inside-work-tree', {
-        cwd: project.directory,
-        stdio: 'pipe',
-      });
-    } catch {
+    if (!checkGitRepo(project.directory)) {
       return NextResponse.json(
         { error: 'Not a git repository' },
         { status: 400 }
@@ -85,27 +81,19 @@ export async function POST(request: Request, context: RouteContext) {
       commitMessage = result.success ? result.output.trim() : 'chore: update project files';
     }
 
-    // Stage all changes
-    execSync('git add -A', {
-      cwd: project.directory,
-      stdio: 'pipe',
-    });
+    // Use safe createCommit function (stages and commits with shell: false)
+    const result = await createCommit(project.directory, commitMessage);
 
-    // Create commit
-    execSync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
-      cwd: project.directory,
-      stdio: 'pipe',
-    });
-
-    // Get commit hash
-    const commitHash = execSync('git rev-parse HEAD', {
-      cwd: project.directory,
-      encoding: 'utf-8',
-    }).trim();
+    if (!result.success) {
+      return NextResponse.json(
+        { error: result.error || 'Failed to create commit' },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
-      commitHash,
+      commitHash: result.commitHash,
       message: commitMessage,
     });
   } catch (error) {

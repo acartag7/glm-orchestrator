@@ -6,6 +6,7 @@ import Link from 'next/link';
 import type { Project, Spec, SpecStatus } from '@specwright/shared';
 import SpecCard from '@/components/SpecCard';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface SpecWithCounts extends Spec {
   chunkCount: number;
@@ -27,6 +28,8 @@ export default function ProjectPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreatingSpec, setIsCreatingSpec] = useState(false);
+  const [deleteConfirmSpec, setDeleteConfirmSpec] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Fetch project and specs
   useEffect(() => {
@@ -91,14 +94,18 @@ export default function ProjectPage() {
     }
   }, [projectId, isCreatingSpec, router]);
 
-  // Handle deleting a spec
-  const handleDeleteSpec = useCallback(async (specId: string) => {
-    if (!confirm('Are you sure you want to delete this spec? This will also delete all its chunks.')) {
-      return;
-    }
+  // Handle deleting a spec - show confirmation modal
+  const handleDeleteSpec = useCallback((specId: string) => {
+    setDeleteConfirmSpec(specId);
+  }, []);
 
+  // Actually delete the spec after confirmation
+  const confirmDeleteSpec = useCallback(async () => {
+    if (!deleteConfirmSpec) return;
+
+    setIsDeleting(true);
     try {
-      const response = await fetch(`/api/specs/${specId}`, {
+      const response = await fetch(`/api/specs/${deleteConfirmSpec}`, {
         method: 'DELETE',
       });
 
@@ -107,12 +114,15 @@ export default function ProjectPage() {
       }
 
       // Remove from local state
-      setSpecs(prev => prev.filter(s => s.id !== specId));
+      setSpecs(prev => prev.filter(s => s.id !== deleteConfirmSpec));
+      setDeleteConfirmSpec(null);
     } catch (err) {
       console.error('Error deleting spec:', err);
       alert('Failed to delete spec');
+    } finally {
+      setIsDeleting(false);
     }
-  }, []);
+  }, [deleteConfirmSpec]);
 
   if (isLoading) {
     return (
@@ -276,6 +286,19 @@ export default function ProjectPage() {
           </button>
         )}
       </main>
+
+      {/* Delete Spec Confirmation Modal */}
+      {deleteConfirmSpec && (
+        <ConfirmModal
+          title="Delete Spec"
+          message="Are you sure you want to delete this spec? This will also delete all its chunks."
+          confirmLabel="delete"
+          onConfirm={confirmDeleteSpec}
+          onCancel={() => setDeleteConfirmSpec(null)}
+          isDanger
+          isLoading={isDeleting}
+        />
+      )}
     </div>
     </ErrorBoundary>
   );

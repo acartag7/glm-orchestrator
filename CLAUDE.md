@@ -204,3 +204,91 @@ When model optimization is enabled (ORC-26):
 | Chunk execution | GLM |
 | Review (pass/fail) | Sonnet |
 | Fix generation | Sonnet |
+
+## UI Patterns
+
+### Click Handlers Inside Link Components
+
+When placing buttons/interactive elements inside Next.js `<Link>` components, **always** use both `preventDefault()` and `stopPropagation()`:
+
+```typescript
+<Link href="/path">
+  <div>
+    <button
+      onClick={(e) => {
+        e.preventDefault();    // Prevents Link navigation
+        e.stopPropagation();   // Stops event bubbling
+        handleAction();
+      }}
+    >
+      Action
+    </button>
+  </div>
+</Link>
+```
+
+### Delete Confirmations
+
+**Never** use browser's native `confirm()` dialog. Use the `ConfirmModal` component instead:
+
+```typescript
+import ConfirmModal from '@/components/ConfirmModal';
+
+// State
+const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+const [isDeleting, setIsDeleting] = useState(false);
+
+// Handler opens modal
+const handleDelete = (id: string) => setDeleteConfirm(id);
+
+// Confirm performs action
+const confirmDelete = async () => {
+  setIsDeleting(true);
+  await deleteItem(deleteConfirm);
+  setDeleteConfirm(null);
+  setIsDeleting(false);
+};
+
+// JSX
+{deleteConfirm && (
+  <ConfirmModal
+    title="Delete Item"
+    message="Are you sure?"
+    confirmLabel="delete"
+    onConfirm={confirmDelete}
+    onCancel={() => setDeleteConfirm(null)}
+    isDanger
+    isLoading={isDeleting}
+  />
+)}
+```
+
+## Security Patterns
+
+### Shell Command Execution
+
+**Never** use string interpolation with `execSync`. Use `spawnSync` with `shell: false`:
+
+```typescript
+// BAD - vulnerable to command injection
+execSync(`git commit -m "${message}"`);
+
+// GOOD - safe, arguments passed as array
+import { spawnSync } from 'child_process';
+spawnSync('git', ['commit', '-m', message], { shell: false });
+```
+
+Use the safe wrappers in `packages/dashboard/src/lib/git.ts`:
+- `gitSync(args, cwd)` - for git commands
+- `ghSync(args, cwd)` - for GitHub CLI commands
+- `createCommit(dir, message)` - for commits
+- `createBranch(dir, name, base)` - for branches
+
+### Input Validation
+
+Branch names are validated with: `/^[\w\-\/.]+$/`
+
+Project paths must:
+- Be within user's home directory
+- Not be in sensitive directories (`.ssh`, `.gnupg`, etc.)
+- Symlinks are resolved before validation
