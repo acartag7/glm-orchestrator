@@ -6,32 +6,52 @@ const execAsync = promisify(exec);
 /**
  * Safe wrapper for git commands that prevents command injection
  */
-function gitSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number | null } {
+function gitSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number } {
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf-8',
     shell: false, // Critical: don't use shell to prevent injection
   });
+
+  // Handle spawnSync errors (e.g., command not found, permission denied)
+  if (result.error) {
+    return {
+      stdout: '',
+      stderr: result.error.message,
+      status: 1,
+    };
+  }
+
   return {
     stdout: result.stdout || '',
     stderr: result.stderr || '',
-    status: result.status,
+    status: result.status ?? 1,
   };
 }
 
 /**
  * Safe wrapper for gh CLI commands that prevents command injection
  */
-function ghSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number | null } {
+function ghSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number } {
   const result = spawnSync('gh', args, {
     cwd,
     encoding: 'utf-8',
     shell: false, // Critical: don't use shell to prevent injection
   });
+
+  // Handle spawnSync errors (e.g., command not found, permission denied)
+  if (result.error) {
+    return {
+      stdout: '',
+      stderr: result.error.message,
+      status: 1,
+    };
+  }
+
   return {
     stdout: result.stdout || '',
     stderr: result.stderr || '',
-    status: result.status,
+    status: result.status ?? 1,
   };
 }
 
