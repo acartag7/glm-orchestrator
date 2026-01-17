@@ -296,15 +296,21 @@ export default function SpecStudioWizard({
         body: JSON.stringify(config),
       });
 
+      let configData: Record<string, unknown> = {};
+      try {
+        configData = await configResponse.json();
+      } catch {
+        // Response body is empty or not valid JSON
+      }
+
       if (!configResponse.ok) {
-        const configError = await configResponse.json();
         if (configResponse.status === 400) {
-          setValidationError(configError.error);
+          setValidationError(configData?.error as string ?? null);
           await saveState({ step: 'config' });
           return;
         } else if (configResponse.status === 503) {
           setAccessibilityStatus({
-            executor: { accessible: false, error: configError.error },
+            executor: { accessible: false, error: configData?.error as string ?? null },
             planner: { accessible: true },
             reviewer: { accessible: true },
           });
@@ -312,9 +318,7 @@ export default function SpecStudioWizard({
           throw new Error('Failed to save config');
         }
       }
-
-      const configData = await configResponse.json();
-      if (configData.validation) {
+      if (configData?.validation) {
         setAccessibilityStatus(configData.validation);
       }
 
@@ -361,14 +365,20 @@ export default function SpecStudioWizard({
         body: JSON.stringify(config),
       });
 
+      let configData: Record<string, unknown> = {};
+      try {
+        configData = await response.json();
+      } catch {
+        // Response body is empty or not valid JSON
+      }
+
       if (!response.ok) {
-        const configError = await response.json();
         if (response.status === 400) {
-          setValidationError(configError.error);
+          setValidationError(configData?.error as string ?? null);
           return;
         } else if (response.status === 503) {
           setAccessibilityStatus({
-            executor: { accessible: false, error: configError.error },
+            executor: { accessible: false, error: configData?.error as string ?? null },
             planner: { accessible: true },
             reviewer: { accessible: true },
           });
@@ -376,9 +386,7 @@ export default function SpecStudioWizard({
           throw new Error('Failed to save config');
         }
       }
-
-      const configData = await response.json();
-      if (configData.validation) {
+      if (configData?.validation) {
         setAccessibilityStatus(configData.validation);
       }
 
