@@ -45,8 +45,39 @@ export interface GitStatus {
 }
 
 export interface GitError {
-  type: 'not_git_repo' | 'no_gh_cli' | 'not_authenticated' | 'branch_exists' | 'no_remote' | 'unknown';
+  type: 'not_git_repo' | 'no_gh_cli' | 'not_authenticated' | 'branch_exists' | 'no_remote' | 'invalid_branch_name' | 'unknown';
   message: string;
+}
+
+/**
+ * Valid git branch name pattern (defense in depth)
+ * Allows alphanumeric, dash, underscore, slash, and dot
+ */
+const VALID_BRANCH_NAME = /^[\w\-\/.]+$/;
+
+/**
+ * Validates a git branch name for safety and correctness
+ */
+function validateBranchName(branchName: string): { valid: boolean; error?: string } {
+  if (!branchName || branchName.length === 0) {
+    return { valid: false, error: 'Branch name cannot be empty' };
+  }
+  if (branchName.length > 255) {
+    return { valid: false, error: 'Branch name is too long (max 255 characters)' };
+  }
+  if (!VALID_BRANCH_NAME.test(branchName)) {
+    return { valid: false, error: 'Branch name contains invalid characters. Use only alphanumeric, dash, underscore, slash, or dot.' };
+  }
+  if (branchName.startsWith('-') || branchName.startsWith('.')) {
+    return { valid: false, error: 'Branch name cannot start with a dash or dot' };
+  }
+  if (branchName.endsWith('.lock') || branchName.endsWith('/')) {
+    return { valid: false, error: 'Branch name cannot end with .lock or /' };
+  }
+  if (branchName.includes('..') || branchName.includes('//')) {
+    return { valid: false, error: 'Branch name cannot contain consecutive dots or slashes' };
+  }
+  return { valid: true };
 }
 
 /**
@@ -157,41 +188,40 @@ export async function createBranch(
   branchName: string,
   baseBranch?: string
 ): Promise<{ success: boolean; error?: GitError }> {
-  try {
-    // If base branch specified, make sure we're on it first
-    if (baseBranch) {
-      try {
-        gitSync(['checkout', baseBranch], directory);
-        // Pull latest
-        try {
-          gitSync(['pull', 'origin', baseBranch], directory);
-        } catch {
-          // Remote may not exist, continue anyway
-        }
-      } catch (e) {
-        // May already be on the branch or branch doesn't exist, continue
-      }
-    }
+  // Validate branch name (defense in depth)
+  const validation = validateBranchName(branchName);
+  if (!validation.valid) {
+    return {
+      success: false,
+      error: { type: 'invalid_branch_name', message: validation.error! },
+    };
+  }
 
-    // Create and checkout new branch
-    const result = gitSync(['checkout', '-b', branchName], directory);
-    if (result.status !== 0) {
-      const message = result.stderr;
-      if (message.includes('already exists')) {
-        return {
-          success: false,
-          error: { type: 'branch_exists', message: `Branch '${branchName}' already exists` },
-        };
-      }
+  // Also validate base branch if provided
+  if (baseBranch) {
+    const baseValidation = validateBranchName(baseBranch);
+    if (!baseValidation.valid) {
       return {
         success: false,
-        error: { type: 'unknown', message },
+        error: { type: 'invalid_branch_name', message: `Base branch: ${baseValidation.error}` },
       };
     }
+  }
 
-    return { success: true };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+  // If base branch specified, make sure we're on it first
+  if (baseBranch) {
+    const checkoutResult = gitSync(['checkout', baseBranch], directory);
+    if (checkoutResult.status === 0) {
+      // Pull latest - ignore failures (remote may not exist)
+      gitSync(['pull', 'origin', baseBranch], directory);
+    }
+    // If checkout failed, continue anyway (may already be on the branch)
+  }
+
+  // Create and checkout new branch
+  const result = gitSync(['checkout', '-b', branchName], directory);
+  if (result.status !== 0) {
+    const message = result.stderr;
     if (message.includes('already exists')) {
       return {
         success: false,
@@ -203,18 +233,22 @@ export async function createBranch(
       error: { type: 'unknown', message },
     };
   }
+
+  return { success: true };
 }
 
 /**
  * Checkout an existing branch
  */
 export function checkoutBranch(directory: string, branchName: string): boolean {
-  try {
-    const result = gitSync(['checkout', branchName], directory);
-    return result.status === 0;
-  } catch {
+  // Validate branch name (defense in depth)
+  const validation = validateBranchName(branchName);
+  if (!validation.valid) {
     return false;
   }
+
+  const result = gitSync(['checkout', branchName], directory);
+  return result.status === 0;
 }
 
 /**
@@ -298,20 +332,21 @@ export async function pushBranch(
   directory: string,
   branchName: string
 ): Promise<{ success: boolean; error?: string }> {
-  try {
-    const result = gitSync(['push', '-u', 'origin', branchName], directory);
-    if (result.status === 0) {
-      return { success: true };
-    }
-    // May already be pushed
-    if (result.stderr.includes('Everything up-to-date')) {
-      return { success: true };
-    }
-    return { success: false, error: result.stderr };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    return { success: false, error: message };
+  // Validate branch name (defense in depth)
+  const validation = validateBranchName(branchName);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
   }
+
+  const result = gitSync(['push', '-u', 'origin', branchName], directory);
+  if (result.status === 0) {
+    return { success: true };
+  }
+  // May already be pushed
+  if (result.stderr.includes('Everything up-to-date')) {
+    return { success: true };
+  }
+  return { success: false, error: result.stderr };
 }
 
 /**
