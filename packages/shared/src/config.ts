@@ -1,5 +1,7 @@
 import * as path from 'node:path';
 
+export const DEFAULT_CHUNK_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
 export interface ExecutorConfig {
   type: 'opencode' | 'claude-code';
   endpoint?: string;
@@ -32,7 +34,7 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
     type: 'opencode',
     endpoint: 'http://localhost:4096',
     model: 'glm-4.7',
-    timeout: 300000,
+    timeout: DEFAULT_CHUNK_TIMEOUT_MS, // 15 minutes (increased from 5 min for complex UI work)
     maxTokens: 8192
   },
   planner: {

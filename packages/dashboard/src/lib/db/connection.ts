@@ -79,18 +79,26 @@ function runPhase2Migrations(database: DatabaseType): void {
 }
 
 function runReviewLoopMigrations(database: DatabaseType): void {
-  // Check if migration is needed by checking if 'review_status' column exists
-  const tableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
-  const hasReviewStatusColumn = tableInfo.some(col => col.name === 'review_status');
+  // Check if migration is needed by checking if 'review_error' column exists
+  // (newer column added after initial review_status/review_feedback)
+  const chunksTableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
+  const hasReviewErrorColumn = chunksTableInfo.some(col => col.name === 'review_error');
 
-  if (!hasReviewStatusColumn) {
+  // Also check if final_review_status exists in specs
+  const specsTableInfo = database.prepare(`PRAGMA table_info(specs)`).all() as { name: string }[];
+  const hasFinalReviewStatusColumn = specsTableInfo.some(col => col.name === 'final_review_status');
+
+  // Check if review_logs table exists
+  const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='review_logs'`).all();
+
+  if (!hasReviewErrorColumn || !hasFinalReviewStatusColumn || tables.length === 0) {
     for (const migration of MIGRATIONS_REVIEW_LOOP) {
       try {
         database.exec(migration);
       } catch (err) {
-        // Column might already exist, ignore
+        // Column/table might already exist, ignore
         const message = err instanceof Error ? err.message : String(err);
-        if (!message.includes('duplicate column')) {
+        if (!message.includes('duplicate column') && !message.includes('already exists')) {
           console.warn(`Migration warning: ${message}`);
         }
       }

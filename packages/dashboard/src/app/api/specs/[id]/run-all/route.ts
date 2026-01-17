@@ -137,6 +137,8 @@ export async function POST(_request: Request, context: RouteContext) {
       // Track if controller is closed (user navigated away)
       const isClosedRef = { value: false };
 
+      const specStartTime = Date.now();
+
       let passed = 0;
       let failed = 0;
       let fixes = 0;
@@ -330,6 +332,7 @@ export async function POST(_request: Request, context: RouteContext) {
         const claudeClient = new ClaudeClient();
 
         try {
+          // Review timeout is separate and shorter (2 min) as reviews are simpler operations than chunk execution
           const reviewResult = await claudeClient.execute(reviewPrompt, { timeout: 120000 });
 
           if (!reviewResult.success) {
@@ -386,6 +389,8 @@ export async function POST(_request: Request, context: RouteContext) {
           return { success: false };
         }
       }
+
+      let prUrl: string | undefined;
 
       // Main execution loop with parallel execution
       try {
@@ -612,7 +617,6 @@ export async function POST(_request: Request, context: RouteContext) {
         }
 
         // Check if all completed successfully
-        let prUrl: string | undefined;
         if (!isRunAllAborted(specId) && failed === 0) {
           // Update spec status to completed
           updateSpec(specId, { status: 'completed' });
@@ -707,6 +711,22 @@ export async function POST(_request: Request, context: RouteContext) {
         if (isWorktree && workingDirectory) {
           updateSpec(specId, { worktreeLastActivity: Date.now() });
         }
+
+        const totalDuration = Date.now() - specStartTime;
+        console.log('[SPEC EXECUTION ANALYTICS]', {
+          specId,
+          specTitle: spec.title,
+          totalChunks: total,
+          completedChunks: passed,
+          failedChunks: failed,
+          fixChunks: fixes,
+          totalDurationMs: totalDuration,
+          totalDurationMinutes: (totalDuration / 60000).toFixed(2),
+          averageChunkDurationMs: total > 0 ? Math.floor(totalDuration / total) : 0,
+          averageChunkDurationMinutes: total > 0 ? (totalDuration / total / 60000).toFixed(2) : '0.00',
+          prCreated: !!prUrl,
+          timestamp: new Date().toISOString()
+        });
 
         endRunAllSession(specId);
         controller.close();

@@ -236,6 +236,28 @@ export const MIGRATIONS_PHASE2 = [
 export const MIGRATIONS_REVIEW_LOOP = [
   `ALTER TABLE chunks ADD COLUMN review_status TEXT`,
   `ALTER TABLE chunks ADD COLUMN review_feedback TEXT`,
+  `ALTER TABLE chunks ADD COLUMN review_error TEXT`,
+  `ALTER TABLE chunks ADD COLUMN review_attempts INTEGER DEFAULT 0`,
+  `ALTER TABLE specs ADD COLUMN final_review_status TEXT DEFAULT 'pending'`,
+  `ALTER TABLE specs ADD COLUMN final_review_feedback TEXT`,
+  `CREATE TABLE IF NOT EXISTS review_logs (
+    id TEXT PRIMARY KEY,
+    chunk_id TEXT,
+    spec_id TEXT,
+    review_type TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL,
+    feedback TEXT,
+    error_message TEXT,
+    error_type TEXT,
+    attempt_number INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
+    FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_review_logs_chunk ON review_logs(chunk_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_review_logs_spec ON review_logs(spec_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_review_logs_type ON review_logs(review_type)`,
 ];
 
 /**
