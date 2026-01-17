@@ -53,7 +53,6 @@ export default function SpecWorkspace() {
   const containerRef = useRef<HTMLDivElement>(null);
   const leftColumnRef = useRef<HTMLDivElement>(null);
 
-  const { state: executionState, runChunk, abortChunk, reviewChunk, clearReview } = useExecution();
   const { startWorker, state: workersState, addToQueue } = useWorkers();
 
   // Handle horizontal resize
@@ -123,6 +122,17 @@ export default function SpecWorkspace() {
       if (updated) setSelectedChunk(updated);
     }
   }, [selectedChunk]);
+
+  // useExecution hook (must be after handleChunksChange and handleSpecUpdate)
+  const { state: executionState, runChunk, abortChunk, reviewChunk, clearReview, isPolling, lastUpdate } = useExecution(
+    spec ? {
+      specId,
+      chunks,
+      spec,
+      onChunksUpdate: handleChunksChange,
+      onSpecUpdate: handleSpecUpdate,
+    } : {}
+  );
 
   // Handle selecting a chunk to view its history
   const handleSelectChunk = useCallback(async (chunk: Chunk) => {
