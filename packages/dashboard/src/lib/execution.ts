@@ -261,25 +261,38 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
     // Update chunk status
     updateChunk(chunkId, { status: 'running' });
 
-    // Set up timeout from config
-    const timeoutMs = config.executor.timeout || getChunkTimeout();
+    // Validate and coerce executor timeout to ensure it's a positive finite number
+    let timeoutMs = getChunkTimeout(); // Default fallback
+    if (config.executor.timeout !== undefined) {
+      const configTimeout = Number(config.executor.timeout);
+      if (Number.isFinite(configTimeout) && configTimeout > 0) {
+        timeoutMs = configTimeout;
+      } else {
+        console.warn(`[Execution] Invalid timeout in config: ${config.executor.timeout}, using default: ${timeoutMs}ms`);
+      }
+    }
+
     const timeoutId = setTimeout(() => {
       handleTimeout(chunkId);
     }, timeoutMs);
 
-    // Set up 80% warning
-    const warningTimeoutId = setTimeout(() => {
-      const timeoutMinutes = Math.floor(timeoutMs / 60000);
-      console.warn('[TIMEOUT WARNING]', {
-        chunkId,
-        specId: chunk.specId,
-        chunkTitle: chunk.title,
-        elapsed: Math.floor(timeoutMs * 0.8 / 1000),
-        remaining: Math.floor(timeoutMs * 0.2 / 1000),
-        message: `Chunk execution at 80% of timeout (${timeoutMinutes} min total)`,
-        timestamp: new Date().toISOString()
-      });
-    }, timeoutMs * 0.8);
+    // Set up 80% warning only if timeout is positive
+    let warningTimeoutId: NodeJS.Timeout | undefined;
+    const warningDelay = timeoutMs * 0.8;
+    if (warningDelay > 0) {
+      warningTimeoutId = setTimeout(() => {
+        const timeoutMinutes = Math.floor(timeoutMs / 60000);
+        console.warn('[TIMEOUT WARNING]', {
+          chunkId,
+          specId: chunk.specId,
+          chunkTitle: chunk.title,
+          elapsed: Math.floor(timeoutMs * 0.8 / 1000),
+          remaining: Math.floor(timeoutMs * 0.2 / 1000),
+          message: `Chunk execution at 80% of timeout (${timeoutMinutes} min total)`,
+          timestamp: new Date().toISOString()
+        });
+      }, warningDelay);
+    }
 
     // Create event handler
     const eventHandler: EventHandler = {
