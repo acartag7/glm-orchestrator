@@ -12,6 +12,11 @@ interface SpecRow {
   original_branch: string | null;
   pr_number: number | null;
   pr_url: string | null;
+  // Worktree fields (ORC-29)
+  worktree_path: string | null;
+  worktree_created_at: number | null;
+  worktree_last_activity: number | null;
+  pr_merged: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -28,6 +33,11 @@ function rowToSpec(row: SpecRow): Spec {
     originalBranch: row.original_branch ?? undefined,
     prNumber: row.pr_number ?? undefined,
     prUrl: row.pr_url ?? undefined,
+    // Worktree fields (ORC-29)
+    worktreePath: row.worktree_path ?? undefined,
+    worktreeCreatedAt: row.worktree_created_at ?? undefined,
+    worktreeLastActivity: row.worktree_last_activity ?? undefined,
+    prMerged: row.pr_merged === 1 ? true : row.pr_merged === 0 ? false : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -96,6 +106,11 @@ export function updateSpec(
     originalBranch?: string;
     prNumber?: number;
     prUrl?: string;
+    // Worktree fields (ORC-29)
+    worktreePath?: string;
+    worktreeCreatedAt?: number;
+    worktreeLastActivity?: number;
+    prMerged?: boolean;
   }
 ): Spec | null {
   const database = getDb();
@@ -106,9 +121,17 @@ export function updateSpec(
   const now = Date.now();
   const updateStmt = database.prepare(`
     UPDATE specs
-    SET title = ?, content = ?, status = ?, branch_name = ?, original_branch = ?, pr_number = ?, pr_url = ?, version = version + 1, updated_at = ?
+    SET title = ?, content = ?, status = ?, branch_name = ?, original_branch = ?, pr_number = ?, pr_url = ?,
+        worktree_path = ?, worktree_created_at = ?, worktree_last_activity = ?, pr_merged = ?,
+        version = version + 1, updated_at = ?
     WHERE id = ?
   `);
+
+  // Handle worktreePath: undefined = keep existing, null = clear it
+  const worktreePath = data.worktreePath === undefined
+    ? existing.worktree_path
+    : data.worktreePath === null ? null : data.worktreePath;
+
   updateStmt.run(
     data.title ?? existing.title,
     data.content ?? existing.content,
@@ -117,6 +140,10 @@ export function updateSpec(
     data.originalBranch ?? existing.original_branch,
     data.prNumber ?? existing.pr_number,
     data.prUrl ?? existing.pr_url,
+    worktreePath,
+    data.worktreeCreatedAt ?? existing.worktree_created_at,
+    data.worktreeLastActivity ?? existing.worktree_last_activity,
+    data.prMerged !== undefined ? (data.prMerged ? 1 : 0) : existing.pr_merged,
     now,
     id
   );

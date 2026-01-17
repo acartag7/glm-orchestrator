@@ -112,6 +112,29 @@ export default function SpecCard({ spec, projectId, onDelete }: SpecCardProps) {
                 </div>
               )}
 
+              {/* Worktree indicator (ORC-29) */}
+              {spec.worktreePath && !spec.prMerged && (
+                <span
+                  className="text-[10px] text-blue-400 font-mono flex items-center gap-1"
+                  title={`Worktree: ${spec.worktreePath}`}
+                >
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5zm2.5 3a1.5 1.5 0 100 3 1.5 1.5 0 000-3zm6.207.293a1 1 0 00-1.414 0l-6 6a1 1 0 101.414 1.414l6-6a1 1 0 000-1.414zM12.5 10a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" clipRule="evenodd" />
+                  </svg>
+                  worktree
+                </span>
+              )}
+
+              {/* PR merged indicator (ORC-29) */}
+              {spec.prMerged && (
+                <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  merged
+                </span>
+              )}
+
               {/* Branch/PR info */}
               {spec.branchName && (
                 <span className="text-[10px] text-neutral-600 font-mono truncate max-w-32">

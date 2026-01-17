@@ -1,5 +1,6 @@
 import { execSync, exec, spawnSync } from 'child_process';
 import { promisify } from 'util';
+import { existsSync } from 'fs';
 
 const execAsync = promisify(exec);
 
@@ -526,4 +527,147 @@ export function generateSpecBranchName(specTitle: string): string {
   }
 
   return branchName;
+}
+
+// ============================================================================
+// Worktree Functions (ORC-29)
+// ============================================================================
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  head: string;
+}
+
+/**
+ * Create a git worktree for isolated spec execution
+ * Format: {projectPath}-spec-{shortId}-{timestamp}
+ */
+export function createWorktree(
+  projectPath: string,
+  specId: string,
+  branchName: string
+): { success: boolean; path?: string; error?: string } {
+  const shortId = specId.slice(0, 8);
+  const timestamp = Date.now();
+  const worktreePath = `${projectPath}-spec-${shortId}-${timestamp}`;
+
+  // Check if path already exists (shouldn't happen with timestamp, but be safe)
+  if (existsSync(worktreePath)) {
+    return {
+      success: false,
+      error: `Worktree path already exists: ${worktreePath}`,
+    };
+  }
+
+  // Create worktree with new branch
+  const result = gitSync(['worktree', 'add', worktreePath, '-b', branchName], projectPath);
+
+  if (result.status !== 0) {
+    // Branch might already exist, try without -b
+    const retryResult = gitSync(['worktree', 'add', worktreePath, branchName], projectPath);
+
+    if (retryResult.status !== 0) {
+      return {
+        success: false,
+        error: retryResult.stderr || 'Failed to create worktree',
+      };
+    }
+  }
+
+  return {
+    success: true,
+    path: worktreePath,
+  };
+}
+
+/**
+ * Remove a git worktree (after PR merge or cleanup)
+ */
+export function removeWorktree(
+  projectPath: string,
+  worktreePath: string
+): { success: boolean; error?: string } {
+  // First try to remove normally
+  let result = gitSync(['worktree', 'remove', worktreePath], projectPath);
+
+  if (result.status !== 0) {
+    // If worktree has uncommitted changes, force remove
+    result = gitSync(['worktree', 'remove', '--force', worktreePath], projectPath);
+
+    if (result.status !== 0) {
+      return {
+        success: false,
+        error: result.stderr || 'Failed to remove worktree',
+      };
+    }
+  }
+
+  return { success: true };
+}
+
+/**
+ * List all worktrees for a project
+ */
+export function listWorktrees(projectPath: string): WorktreeInfo[] {
+  const result = gitSync(['worktree', 'list', '--porcelain'], projectPath);
+
+  if (result.status !== 0) {
+    return [];
+  }
+
+  const worktrees: WorktreeInfo[] = [];
+  const lines = result.stdout.split('\n');
+  let current: Partial<WorktreeInfo> = {};
+
+  for (const line of lines) {
+    if (line.startsWith('worktree ')) {
+      current.path = line.replace('worktree ', '');
+    } else if (line.startsWith('branch ')) {
+      current.branch = line.replace('branch ', '').replace('refs/heads/', '');
+    } else if (line.startsWith('HEAD ')) {
+      current.head = line.replace('HEAD ', '');
+    } else if (line === '') {
+      if (current.path) {
+        worktrees.push(current as WorktreeInfo);
+      }
+      current = {};
+    }
+  }
+
+  // Handle last entry if no trailing newline
+  if (current.path) {
+    worktrees.push(current as WorktreeInfo);
+  }
+
+  return worktrees;
+}
+
+/**
+ * Check if PR is merged using gh CLI
+ */
+export function checkPRMerged(
+  projectPath: string,
+  prUrl: string
+): { merged: boolean; error?: string } {
+  // Extract PR number from URL
+  const prMatch = prUrl.match(/\/pull\/(\d+)/);
+  if (!prMatch) {
+    return { merged: false, error: 'Invalid PR URL' };
+  }
+
+  const prNumber = prMatch[1];
+
+  const result = ghSync(['pr', 'view', prNumber, '--json', 'state,merged'], projectPath);
+
+  if (result.status !== 0) {
+    return { merged: false, error: result.stderr };
+  }
+
+  try {
+    const data = JSON.parse(result.stdout);
+    return { merged: data.merged === true };
+  } catch {
+    return { merged: false, error: 'Failed to parse PR status' };
+  }
 }

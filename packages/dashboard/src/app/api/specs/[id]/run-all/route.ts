@@ -27,7 +27,9 @@ import {
   createPullRequest,
   generateSpecBranchName,
   checkGitHubCLI,
+  createWorktree,
 } from '@/lib/git';
+import { existsSync } from 'fs';
 import { ClaudeClient } from '@specwright/mcp/client';
 import type { ChunkToolCall, Chunk, ReviewResult } from '@specwright/shared';
 
@@ -146,44 +148,90 @@ export async function POST(_request: Request, context: RouteContext) {
       let originalBranch: string | null = null;
       let specBranch: string | null = null;
       let projectDir: string | null = null;
+      let workingDirectory: string | null = null; // The directory to use for git operations (worktree or project)
+      let isWorktree = false;
 
-      // Initialize git workflow
+      // Initialize git workflow with worktree support (ORC-29)
       const project = getProject(spec.projectId);
       if (project) {
         projectDir = project.directory;
         if (checkGitRepo(projectDir)) {
           gitEnabled = true;
           originalBranch = getCurrentBranch(projectDir);
-          specBranch = generateSpecBranchName(spec.title);
+          specBranch = spec.branchName || generateSpecBranchName(spec.title);
 
-          // Try to create and checkout the spec branch
-          const branchResult = await createBranch(projectDir, specBranch, originalBranch || undefined);
-          if (branchResult.success) {
-            // Store branch info in spec
-            updateSpec(specId, { branchName: specBranch, originalBranch: originalBranch || undefined });
-            sendEvent(controller, encoder, isClosedRef, 'git_branch_created', {
-              branch: specBranch,
-              originalBranch,
+          // Check if spec already has a worktree
+          if (spec.worktreePath && existsSync(spec.worktreePath)) {
+            // Reuse existing worktree
+            workingDirectory = spec.worktreePath;
+            isWorktree = true;
+
+            // Update last activity
+            updateSpec(specId, {
+              worktreeLastActivity: Date.now(),
             });
-          } else if (branchResult.error?.type === 'branch_exists') {
-            // Branch already exists, try to switch to it
-            if (checkoutBranch(projectDir, specBranch)) {
-              updateSpec(specId, { branchName: specBranch, originalBranch: originalBranch || undefined });
-              sendEvent(controller, encoder, isClosedRef, 'git_branch_switched', {
+
+            sendEvent(controller, encoder, isClosedRef, 'worktree_reused', {
+              path: workingDirectory,
+              branch: specBranch,
+            });
+          } else {
+            // Create new worktree with unique path (includes timestamp)
+            const worktreeResult = createWorktree(projectDir, specId, specBranch);
+
+            if (worktreeResult.success && worktreeResult.path) {
+              workingDirectory = worktreeResult.path;
+              isWorktree = true;
+
+              // Store worktree info in spec
+              updateSpec(specId, {
+                worktreePath: workingDirectory,
+                worktreeCreatedAt: Date.now(),
+                worktreeLastActivity: Date.now(),
+                branchName: specBranch,
+                originalBranch: originalBranch || undefined,
+              });
+
+              sendEvent(controller, encoder, isClosedRef, 'worktree_created', {
+                path: workingDirectory,
                 branch: specBranch,
+                message: `Worktree created at: ${workingDirectory}`,
               });
             } else {
-              // Can't switch to branch, disable git workflow
-              console.warn('[Git] Failed to switch to existing branch:', specBranch);
-              gitEnabled = false;
+              // Worktree creation failed, fall back to in-place git workflow
+              console.warn('[Git] Failed to create worktree:', worktreeResult.error);
+              workingDirectory = projectDir;
+
+              // Try to create and checkout the spec branch in-place
+              const branchResult = await createBranch(projectDir, specBranch, originalBranch || undefined);
+              if (branchResult.success) {
+                updateSpec(specId, { branchName: specBranch, originalBranch: originalBranch || undefined });
+                sendEvent(controller, encoder, isClosedRef, 'git_branch_created', {
+                  branch: specBranch,
+                  originalBranch,
+                });
+              } else if (branchResult.error?.type === 'branch_exists') {
+                // Branch already exists, try to switch to it
+                if (checkoutBranch(projectDir, specBranch)) {
+                  updateSpec(specId, { branchName: specBranch, originalBranch: originalBranch || undefined });
+                  sendEvent(controller, encoder, isClosedRef, 'git_branch_switched', {
+                    branch: specBranch,
+                  });
+                } else {
+                  console.warn('[Git] Failed to switch to existing branch:', specBranch);
+                  gitEnabled = false;
+                }
+              } else {
+                console.warn('[Git] Failed to create branch:', branchResult.error?.message);
+                gitEnabled = false;
+              }
             }
-          } else {
-            // Branch creation failed for another reason, disable git workflow
-            console.warn('[Git] Failed to create branch:', branchResult.error?.message);
-            gitEnabled = false;
           }
         }
       }
+
+      // Use worktree path or project directory for git operations
+      const gitDir = workingDirectory || projectDir;
 
       // Helper to run a single chunk (original or fix)
       async function runChunk(
@@ -384,8 +432,8 @@ export async function POST(_request: Request, context: RouteContext) {
 
             if (!result.success) {
               // Git: Reset to discard failed changes
-              if (gitEnabled && projectDir) {
-                resetHard(projectDir);
+              if (gitEnabled && gitDir) {
+                resetHard(gitDir);
                 sendEvent(controller, encoder, isClosedRef, 'git_reset', {
                   chunkId: chunk.id,
                   reason: 'Chunk execution failed',
@@ -406,8 +454,8 @@ export async function POST(_request: Request, context: RouteContext) {
             if (result.reviewResult) {
               if (result.reviewResult.status === 'pass') {
                 // Git: Commit the successful chunk
-                if (gitEnabled && projectDir) {
-                  const commitResult = await createCommit(projectDir, `chunk ${currentIndex}: ${chunk.title}`);
+                if (gitEnabled && gitDir) {
+                  const commitResult = await createCommit(gitDir, `chunk ${currentIndex}: ${chunk.title}`);
                   if (commitResult.success && commitResult.commitHash) {
                     updateChunk(chunk.id, { commitHash: commitResult.commitHash });
                     sendEvent(controller, encoder, isClosedRef, 'git_commit', {
@@ -417,7 +465,7 @@ export async function POST(_request: Request, context: RouteContext) {
                     });
                   } else if (!commitResult.success) {
                     // Commit failed - reset to clean state and emit failure event
-                    resetHard(projectDir);
+                    resetHard(gitDir);
                     sendEvent(controller, encoder, isClosedRef, 'git_commit_failed', {
                       chunkId: chunk.id,
                       error: commitResult.error || 'Failed to commit changes',
@@ -435,8 +483,8 @@ export async function POST(_request: Request, context: RouteContext) {
 
                   if (!fixResult.success) {
                     // Git: Reset to discard failed fix changes
-                    if (gitEnabled && projectDir) {
-                      resetHard(projectDir);
+                    if (gitEnabled && gitDir) {
+                      resetHard(gitDir);
                       sendEvent(controller, encoder, isClosedRef, 'git_reset', {
                         chunkId: result.fixChunkId,
                         reason: 'Fix chunk execution failed',
@@ -456,8 +504,8 @@ export async function POST(_request: Request, context: RouteContext) {
                   // Check fix chunk review
                   if (fixResult.reviewResult?.status === 'pass') {
                     // Git: Commit the successful fix chunk
-                    if (gitEnabled && projectDir) {
-                      const commitResult = await createCommit(projectDir, `fix: ${fixChunk.title}`);
+                    if (gitEnabled && gitDir) {
+                      const commitResult = await createCommit(gitDir, `fix: ${fixChunk.title}`);
                       if (commitResult.success && commitResult.commitHash) {
                         updateChunk(result.fixChunkId, { commitHash: commitResult.commitHash });
                         sendEvent(controller, encoder, isClosedRef, 'git_commit', {
@@ -467,7 +515,7 @@ export async function POST(_request: Request, context: RouteContext) {
                         });
                       } else if (!commitResult.success) {
                         // Commit failed - reset to clean state and emit failure event
-                        resetHard(projectDir);
+                        resetHard(gitDir);
                         sendEvent(controller, encoder, isClosedRef, 'git_commit_failed', {
                           chunkId: result.fixChunkId,
                           error: commitResult.error || 'Failed to commit fix changes',
@@ -479,8 +527,8 @@ export async function POST(_request: Request, context: RouteContext) {
                     passed++;
                   } else if (fixResult.reviewResult?.status === 'fail') {
                     // Git: Reset to discard failed fix work
-                    if (gitEnabled && projectDir) {
-                      resetHard(projectDir);
+                    if (gitEnabled && gitDir) {
+                      resetHard(gitDir);
                       sendEvent(controller, encoder, isClosedRef, 'git_reset', {
                         chunkId: result.fixChunkId,
                         reason: 'Fix chunk review failed',
@@ -499,8 +547,8 @@ export async function POST(_request: Request, context: RouteContext) {
                 }
               } else if (result.reviewResult.status === 'fail') {
                 // Git: Reset to discard failed chunk work
-                if (gitEnabled && projectDir) {
-                  resetHard(projectDir);
+                if (gitEnabled && gitDir) {
+                  resetHard(gitDir);
                   sendEvent(controller, encoder, isClosedRef, 'git_reset', {
                     chunkId: chunk.id,
                     reason: 'Chunk review failed',
@@ -527,12 +575,12 @@ export async function POST(_request: Request, context: RouteContext) {
           updateSpec(specId, { status: 'completed' });
 
           // Git: Push branch and create PR
-          if (gitEnabled && projectDir && specBranch && originalBranch) {
+          if (gitEnabled && gitDir && specBranch && originalBranch) {
             // Check if gh CLI is available
             const ghCheck = checkGitHubCLI();
             if (ghCheck.installed && ghCheck.authenticated) {
-              // Push branch to remote
-              const pushResult = await pushBranch(projectDir, specBranch);
+              // Push branch to remote (from worktree or project dir)
+              const pushResult = await pushBranch(gitDir, specBranch);
               if (pushResult.success) {
                 sendEvent(controller, encoder, isClosedRef, 'git_push', {
                   branch: specBranch,
@@ -541,7 +589,7 @@ export async function POST(_request: Request, context: RouteContext) {
                 // Create PR
                 const prBody = `Automated PR for spec execution.\n\n**${passed} chunks** completed successfully.\n\n## Spec: ${spec.title}`;
                 const prResult = await createPullRequest(
-                  projectDir,
+                  gitDir,
                   `Spec: ${spec.title}`,
                   prBody,
                   originalBranch
@@ -588,8 +636,9 @@ export async function POST(_request: Request, context: RouteContext) {
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       } finally {
-        // Git: Always switch back to original branch
-        if (gitEnabled && projectDir && originalBranch) {
+        // Git: Only switch back to original branch if NOT using worktree
+        // With worktree, main project directory is untouched
+        if (gitEnabled && projectDir && originalBranch && !isWorktree) {
           try {
             const switched = checkoutBranch(projectDir, originalBranch);
             if (!switched) {
@@ -610,6 +659,12 @@ export async function POST(_request: Request, context: RouteContext) {
             });
           }
         }
+
+        // Update worktree last activity timestamp
+        if (isWorktree && workingDirectory) {
+          updateSpec(specId, { worktreeLastActivity: Date.now() });
+        }
+
         endRunAllSession(specId);
         controller.close();
       }

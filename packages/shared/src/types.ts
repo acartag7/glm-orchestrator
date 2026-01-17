@@ -31,6 +31,11 @@ export interface Spec {
   originalBranch?: string;
   prNumber?: number;
   prUrl?: string;
+  // Worktree fields (ORC-29)
+  worktreePath?: string;
+  worktreeCreatedAt?: number;
+  worktreeLastActivity?: number;
+  prMerged?: boolean;
   createdAt: number;
   updatedAt: number;
 }

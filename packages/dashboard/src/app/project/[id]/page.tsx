@@ -160,6 +160,9 @@ export default function ProjectPage() {
   const runningCount = specs.filter(s => s.status === 'running').length;
   const completedCount = specs.filter(s => s.status === 'completed' || s.status === 'merged').length;
 
+  // Count active worktrees (ORC-29)
+  const activeWorktreeCount = specs.filter(s => s.worktreePath && !s.prMerged).length;
+
   return (
     <ErrorBoundary>
     <div className="min-h-screen bg-neutral-950 flex flex-col bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:64px_64px]">
@@ -217,6 +220,18 @@ export default function ProjectPage() {
           )}
         </div>
 
+        {/* Parallel specs warning (ORC-29) */}
+        {activeWorktreeCount >= 5 && (
+          <div className="mb-4 p-3 bg-amber-950/30 border border-amber-800/50 rounded-md">
+            <p className="text-sm text-amber-300 font-mono flex items-center gap-2">
+              <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {activeWorktreeCount} specs running in parallel. Performance may be impacted.
+            </p>
+          </div>
+        )}
+
         {/* Stats */}
         {specs.length > 0 && (
           <div className="flex items-center gap-4 mb-6 text-xs font-mono">
@@ -232,6 +247,14 @@ export default function ProjectPage() {
             {completedCount > 0 && (
               <span className="text-emerald-400">
                 {completedCount} completed
+              </span>
+            )}
+            {activeWorktreeCount > 0 && (
+              <span className="text-blue-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5 2a2 2 0 00-2 2v14l3.5-2 3.5 2 3.5-2 3.5 2V4a2 2 0 00-2-2H5z" clipRule="evenodd" />
+                </svg>
+                {activeWorktreeCount} worktree{activeWorktreeCount !== 1 ? 's' : ''}
               </span>
             )}
           </div>

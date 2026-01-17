@@ -459,3 +459,14 @@ export const MIGRATIONS_GIT_INTEGRATION = [
   `ALTER TABLE specs ADD COLUMN original_branch TEXT`,
   `ALTER TABLE chunks ADD COLUMN commit_hash TEXT`,
 ];
+
+/**
+ * Migration queries for Git Worktrees (ORC-29)
+ * Adds worktree columns to specs table for parallel spec execution
+ */
+export const MIGRATIONS_WORKTREES = [
+  `ALTER TABLE specs ADD COLUMN worktree_path TEXT`,
+  `ALTER TABLE specs ADD COLUMN worktree_created_at INTEGER`,
+  `ALTER TABLE specs ADD COLUMN worktree_last_activity INTEGER`,
+  `ALTER TABLE specs ADD COLUMN pr_merged INTEGER DEFAULT 0`,
+];
