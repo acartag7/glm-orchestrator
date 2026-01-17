@@ -25,11 +25,26 @@ const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const CLAUDE_NOT_FOUND_ERROR =
   "Claude CLI not found. Set CLAUDE_PATH environment variable or ensure 'claude' is in your PATH";
 
+/**
+ * Generate a session name for Claude CLI --name flag
+ * Format: [ORC] {taskType}: {truncatedPrompt}...
+ */
+function generateSessionName(taskType: string, prompt: string): string {
+  const maxPromptLength = 30;
+  const truncatedPrompt =
+    prompt.length > maxPromptLength
+      ? prompt.slice(0, maxPromptLength).trim() + "..."
+      : prompt;
+  return `[ORC] ${taskType}: ${truncatedPrompt}`;
+}
+
 export interface ClaudeClientOptions {
   model?: string;
   workingDirectory?: string;
   timeout?: number;
   systemPrompt?: string;
+  /** Task type for session naming (e.g., "refine", "review", "plan") */
+  taskType?: string;
 }
 
 export interface ClaudeExecutionResult {
@@ -70,6 +85,7 @@ export class ClaudeClient {
       workingDirectory = process.cwd(),
       timeout = DEFAULT_TIMEOUT_MS,
       systemPrompt,
+      taskType = "task",
     } = options;
 
     const startTime = Date.now();
@@ -79,7 +95,8 @@ export class ClaudeClient {
     let cost: number | undefined;
     let tokens: TokenUsage | undefined;
 
-    const args = ["-p", prompt, "--output-format", "stream-json", "--model", model];
+    const sessionName = generateSessionName(taskType, prompt);
+    const args = ["-p", prompt, "--output-format", "stream-json", "--model", model, "--name", sessionName];
 
     if (systemPrompt) {
       args.push("--system-prompt", systemPrompt);
@@ -213,9 +230,11 @@ export class ClaudeClient {
       model = this.defaultModel,
       workingDirectory = process.cwd(),
       systemPrompt,
+      taskType = "task",
     } = options;
 
-    const args = ["-p", prompt, "--output-format", "stream-json", "--model", model];
+    const sessionName = generateSessionName(taskType, prompt);
+    const args = ["-p", prompt, "--output-format", "stream-json", "--model", model, "--name", sessionName];
 
     if (systemPrompt) {
       args.push("--system-prompt", systemPrompt);
