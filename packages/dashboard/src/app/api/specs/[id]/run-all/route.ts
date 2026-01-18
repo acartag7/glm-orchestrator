@@ -629,6 +629,8 @@ export async function POST(_request: Request, context: RouteContext) {
                 blockedByTitle: depValidation.blockingChunkTitle,
                 reason: depValidation.reason,
               });
+              // Also cancel all chunks that depend on this one (transitive dependents)
+              cancelDependentChunks(chunk.id, chunk.title, 'dependency validation failed', currentChunks, completedIds, failedIds, controller, encoder, isClosedRef);
               continue; // Skip this chunk, try next runnable chunk
             }
 
