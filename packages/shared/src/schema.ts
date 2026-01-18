@@ -260,6 +260,8 @@ export const MIGRATIONS_REVIEW_LOOP = [
   `CREATE INDEX IF NOT EXISTS idx_review_logs_chunk ON review_logs(chunk_id)`,
   `CREATE INDEX IF NOT EXISTS idx_review_logs_spec ON review_logs(spec_id)`,
   `CREATE INDEX IF NOT EXISTS idx_review_logs_type ON review_logs(review_type)`,
+  // Migration for existing tables without duration_ms column
+  `ALTER TABLE review_logs ADD COLUMN duration_ms INTEGER`,
 ];
 
 /**
