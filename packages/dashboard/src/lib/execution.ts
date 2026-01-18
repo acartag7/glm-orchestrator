@@ -64,6 +64,7 @@ const activeRunAllSessions = new Map<string, { aborted: boolean }>();
 
 /**
  * Start a run-all session for a spec
+ * @deprecated Use specExecutionService.runAll() from '@/lib/services/spec-execution-service' instead
  */
 export function startRunAllSession(specId: string): void {
   activeRunAllSessions.set(specId, { aborted: false });
@@ -71,6 +72,7 @@ export function startRunAllSession(specId: string): void {
 
 /**
  * Check if run-all should be aborted
+ * @deprecated Use specExecutionService from '@/lib/services/spec-execution-service' instead
  */
 export function isRunAllAborted(specId: string): boolean {
   const session = activeRunAllSessions.get(specId);
@@ -79,6 +81,7 @@ export function isRunAllAborted(specId: string): boolean {
 
 /**
  * Abort a run-all session
+ * @deprecated Use specExecutionService.abort() from '@/lib/services/spec-execution-service' instead
  */
 export function abortRunAllSession(specId: string): void {
   const session = activeRunAllSessions.get(specId);
@@ -89,6 +92,7 @@ export function abortRunAllSession(specId: string): void {
 
 /**
  * End a run-all session
+ * @deprecated Use specExecutionService from '@/lib/services/spec-execution-service' instead
  */
 export function endRunAllSession(specId: string): void {
   activeRunAllSessions.delete(specId);
@@ -96,6 +100,7 @@ export function endRunAllSession(specId: string): void {
 
 /**
  * Check if a run-all session is active
+ * @deprecated Use specExecutionService.isRunning() from '@/lib/services/spec-execution-service' instead
  */
 export function hasActiveRunAllSession(specId: string): boolean {
   return activeRunAllSessions.has(specId);
@@ -104,6 +109,7 @@ export function hasActiveRunAllSession(specId: string): boolean {
 /**
  * Wait for a chunk execution to complete
  * Returns the final status and output/error
+ * @deprecated Use chunkPipeline.execute() from '@/lib/services/chunk-pipeline' instead
  */
 export function waitForChunkCompletion(
   chunkId: string,
@@ -192,6 +198,7 @@ export function getRunningChunkId(): string | null {
 
 /**
  * Start executing a chunk
+ * @deprecated Use chunkExecutor.execute() from '@/lib/services/chunk-executor' or chunkPipeline.execute() instead
  */
 export async function startChunkExecution(chunkId: string): Promise<{ success: boolean; error?: string }> {
   // Check if already running
@@ -380,6 +387,7 @@ export async function startChunkExecution(chunkId: string): Promise<{ success: b
 
 /**
  * Abort a running chunk execution
+ * @deprecated Use chunkPipeline.abort() from '@/lib/services/chunk-pipeline' instead
  */
 export async function abortChunkExecution(chunkId: string): Promise<{ success: boolean; error?: string }> {
   const execution = activeExecutions.get(chunkId);
