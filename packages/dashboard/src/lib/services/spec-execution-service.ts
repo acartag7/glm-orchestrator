@@ -113,7 +113,17 @@ export class SpecExecutionService {
       // Get project for git operations
       const project = getProject(spec.projectId);
       if (!project) {
+        // Compute duration and emit completion for consistent client behavior
+        stats.durationMs = Date.now() - startTime;
+        console.log('[Execution] Spec execution failed - project not found:', {
+          specId,
+          specTitle: spec.title,
+          ...stats,
+          durationMinutes: (stats.durationMs / 60000).toFixed(2),
+          error: 'Project not found',
+        });
         events?.onError?.(specId, 'Project not found');
+        events?.onSpecComplete?.(specId, stats);
         return;
       }
 
@@ -124,7 +134,16 @@ export class SpecExecutionService {
       );
 
       if (pendingChunks.length === 0) {
+        // Compute duration and emit completion for consistent client behavior
+        stats.durationMs = Date.now() - startTime;
+        console.log('[Execution] Spec execution skipped - no pending chunks:', {
+          specId,
+          specTitle: spec.title,
+          ...stats,
+          durationMinutes: (stats.durationMs / 60000).toFixed(2),
+        });
         events?.onError?.(specId, 'No pending chunks to execute');
+        events?.onSpecComplete?.(specId, stats);
         return;
       }
 
@@ -239,6 +258,7 @@ export class SpecExecutionService {
           } else if (result.status === 'needs_fix' && result.fixChunkId) {
             // Run the fix chunk
             stats.fixChunksCreated++;
+            stats.totalChunks++; // Count fix chunk in total for consistent bookkeeping
             const fixChunk = getChunk(result.fixChunkId);
 
             if (fixChunk) {
@@ -254,11 +274,13 @@ export class SpecExecutionService {
               if (fixResult.status === 'pass') {
                 completedIds.add(chunk.id);
                 completedIds.add(result.fixChunkId);
-                stats.passedChunks++;
+                // Count both original chunk and fix chunk as passed
+                stats.passedChunks += 2;
               } else {
                 // Fix failed - mark original chunk as failed
+                // Original chunk counts as failed, fix chunk also failed
                 failedIds.add(chunk.id);
-                stats.failedChunks++;
+                stats.failedChunks += 2;
                 hasFailure = true;
                 stopReason = `Fix chunk "${fixChunk.title}" failed`;
                 this.cancelDependentChunks(chunk.id, chunk.title, 'fix failed', currentChunks, completedIds, failedIds, events);

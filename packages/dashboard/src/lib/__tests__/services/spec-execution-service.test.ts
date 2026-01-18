@@ -405,7 +405,8 @@ describe('SpecExecutionService', () => {
         'spec-1',
         expect.objectContaining({
           fixChunksCreated: 1,
-          passedChunks: 1,
+          totalChunks: 2, // Original + fix chunk
+          passedChunks: 2, // Both original and fix passed
         })
       );
     });
