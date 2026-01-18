@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Spec, SpecStudioState, SpecStudioStep, Question, ChunkSuggestion, ProjectConfig } from '@specwright/shared';
 import { DEFAULT_PROJECT_CONFIG } from '@specwright/shared';
-import StepIndicator from './StepIndicator';
+import StepIndicator, { stepOrder } from './StepIndicator';
 import IntentStep from './IntentStep';
 import QuestionsStep from './QuestionsStep';
 import ReviewStep, { type ChunkDetailLevel } from './ReviewStep';
@@ -58,6 +58,27 @@ export default function SpecStudioWizard({
     const chunksChanged = JSON.stringify(studioState.suggestedChunks) !== JSON.stringify(saved.suggestedChunks);
 
     return intentChanged || answersChanged || specChanged || chunksChanged;
+  }, [studioState]);
+
+  // Compute the maximum step index that has been completed based on data presence
+  // This allows jumping to any previously completed step when editing
+  const maxCompletedIndex = useMemo(() => {
+    if (!studioState) return 0;
+
+    // Check data presence from latest to earliest
+    if (studioState.suggestedChunks && studioState.suggestedChunks.length > 0) {
+      return stepOrder['chunks']; // 4
+    }
+    if (studioState.generatedSpec && studioState.generatedSpec.trim() !== '') {
+      return stepOrder['config']; // 3 - can navigate to config if spec exists
+    }
+    if (studioState.answers && Object.keys(studioState.answers).length > 0) {
+      return stepOrder['review']; // 2
+    }
+    if (studioState.questions && studioState.questions.length > 0) {
+      return stepOrder['questions']; // 1
+    }
+    return stepOrder['intent']; // 0
   }, [studioState]);
 
   // Build API URL with optional specId
@@ -526,7 +547,7 @@ export default function SpecStudioWizard({
             <span className="text-neutral-100">{projectName}</span>
           </div>
           <div className="flex-1" />
-          <StepIndicator currentStep={studioState.step} onStepClick={goToStep} />
+          <StepIndicator currentStep={studioState.step} maxCompletedIndex={maxCompletedIndex} onStepClick={goToStep} />
           {isSaving && (
             <span className="text-[10px] text-neutral-500 font-mono">saving...</span>
           )}

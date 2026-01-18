@@ -64,19 +64,27 @@ Description: {description}
 Determine if the task was completed correctly based on BOTH the AI output AND the actual code changes.
 
 CRITICAL RULES:
-1. If the build PASSED but changes don't match the task description → "needs_fix"
-2. If the AI output claims success but changes are incomplete → "needs_fix"
-3. Only "pass" if BOTH:
+1. If the build FAILED, your feedback MUST quote the actual build error message
+2. If the build PASSED but changes don't match the task description → "needs_fix"
+3. If the AI output claims success but changes are incomplete → "needs_fix"
+4. Only "pass" if BOTH:
    - Build passes (already verified above)
    - AND changes correctly implement the task
+
+IMPORTANT - Error diagnosis:
+- TypeScript "has no exported member 'X'" = Missing type EXPORT, not missing file
+- TypeScript "Cannot find module 'X'" = Missing file OR missing package
+- TypeScript "Property 'X' does not exist" = Type mismatch, not missing file
+- Files created but build fails = Usually missing exports or imports, NOT missing files
+- NEVER say "files don't exist" unless you see "Cannot find module" or "ENOENT" errors
 
 Return JSON:
 {
   "status": "pass" | "needs_fix" | "fail",
-  "feedback": "Brief explanation of your assessment",
+  "feedback": "Brief explanation citing the actual error message if build failed",
   "fixChunk": {
     "title": "Short title for the fix",
-    "description": "Detailed instructions to fix the issue"
+    "description": "Detailed instructions to fix the specific error"
   }
 }
 
@@ -84,8 +92,8 @@ Rules:
 - "pass" = Task completed correctly, changes match task, build passes
 - "needs_fix" = Task partially done, changes incomplete, or logic errors
 - "fail" = Task cannot be completed, fundamental problem
-- Be specific in feedback about what's missing or wrong
-- Fix descriptions should be actionable and specific
+- Be specific in feedback - QUOTE the actual error message from build output
+- Fix descriptions must address the ACTUAL error, not a misinterpretation
 - Only include fixChunk if status is "needs_fix"
 - Return ONLY valid JSON, no markdown code blocks`;
 

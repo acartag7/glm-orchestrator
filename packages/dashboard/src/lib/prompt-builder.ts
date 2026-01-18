@@ -165,9 +165,20 @@ Description: ${chunk.description}
 - Build on the work already done by previous chunks
 - Do NOT recreate files that already exist - modify them instead
 - Reference existing code created by previous chunks
-- If you need to import something that should exist, assume it's at the path created by the previous chunk
 - Focus only on THIS task - don't do work that belongs to other chunks
 - Be thorough but efficient
+
+## CRITICAL: Type Safety
+Before importing any type, interface, or function from another file:
+1. First READ the source file to verify it exists and exports what you need
+2. If a type/export you need doesn't exist, CREATE IT in the appropriate file:
+   - For shared types: Add to the shared types file (e.g., \`@specwright/shared\` or similar)
+   - For component props: Define inline in the component file
+   - For API types: Add to the relevant API types file
+3. NEVER import something that doesn't exist - always verify or create first
+4. After creating new exports, verify the import works by reading the file
+
+This ensures your changes will build successfully.
 
 Now complete this task.`;
 }
@@ -190,6 +201,15 @@ Description: ${chunk.description}
 - Set up any necessary foundations for subsequent tasks
 - Be thorough but efficient
 - Future chunks will build on your work
+
+## CRITICAL: Type Safety
+When creating types, interfaces, or exports:
+1. If creating shared types, add them to the appropriate shared types file
+2. Export all types/interfaces that other files might need
+3. VERIFY your exports by reading the file after editing
+4. NEVER assume types exist - always read files first to check
+
+This ensures your changes will build successfully and future chunks can use your code.
 
 Now complete this task.`;
 }
