@@ -10,6 +10,7 @@ import { DEFAULT_PROJECT_CONFIG, DEFAULT_CHUNK_TIMEOUT_MS } from '@specwright/sh
 import { getChunk, updateChunk, createToolCall, updateToolCall, getProject, getSpec, getChunksBySpec } from './db';
 import { buildPromptForChunk } from './prompt-builder';
 import { generateChunkSummary, generateQuickSummary } from './summary-generator';
+import { gitSync } from './git';
 
 const MAX_BUFFER_SIZE = 1000; // Maximum events to buffer for late subscribers
 
@@ -499,6 +500,109 @@ function handleToolCall(chunkId: string, toolCall: ToolCallEvent): void {
   });
 }
 
+/**
+ * Result of validating file changes in worktree
+ */
+interface ChangeValidation {
+  hasChanges: boolean;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  onlyWhitespace: boolean;
+}
+
+/**
+ * Structural status codes from git porcelain that indicate real content changes
+ * A = Added, D = Deleted, R = Renamed, C = Copied, ? = Untracked
+ * These should never be considered "whitespace-only" changes
+ */
+const STRUCTURAL_STATUS_CODES = new Set(['A', 'D', 'R', 'C', '?']);
+
+/**
+ * Parse diff output to extract content change lines
+ */
+function extractContentChanges(diffOutput: string): string[] {
+  return diffOutput
+    .split('\n')
+    .filter(line => line.startsWith('+') || line.startsWith('-'))
+    .filter(line => !line.startsWith('+++') && !line.startsWith('---'));
+}
+
+/**
+ * Validate that actual file changes were made during chunk execution
+ * This prevents marking chunks as "completed" when no work was done
+ */
+function validateFileChanges(directory: string): ChangeValidation {
+  // Get git status for changed files
+  const statusResult = gitSync(['status', '--porcelain'], directory);
+  const porcelain = statusResult.status === 0 ? statusResult.stdout.trim() : '';
+
+  // If no changes at all, return early
+  if (!porcelain) {
+    return {
+      hasChanges: false,
+      filesChanged: 0,
+      additions: 0,
+      deletions: 0,
+      onlyWhitespace: false,
+    };
+  }
+
+  const porcelainLines = porcelain.split('\n').filter(Boolean);
+  const filesChanged = porcelainLines.length;
+
+  // Parse porcelain status codes to detect structural changes
+  // Format: XY filename (X = index status, Y = worktree status)
+  // For untracked: ?? filename
+  let hasStructuralChanges = false;
+  for (const line of porcelainLines) {
+    const indexStatus = line[0];
+    const worktreeStatus = line[1];
+    if (STRUCTURAL_STATUS_CODES.has(indexStatus) || STRUCTURAL_STATUS_CODES.has(worktreeStatus)) {
+      hasStructuralChanges = true;
+      break;
+    }
+  }
+
+  // Get normal diffs (unstaged and staged)
+  const diffResult = gitSync(['diff'], directory);
+  const diff = diffResult.status === 0 ? diffResult.stdout : '';
+  const stagedDiffResult = gitSync(['diff', '--staged'], directory);
+  const stagedDiff = stagedDiffResult.status === 0 ? stagedDiffResult.stdout : '';
+  const fullDiff = diff + stagedDiff;
+
+  // Get whitespace-ignoring diffs for comparison
+  const diffNoWhitespaceResult = gitSync(['diff', '-w'], directory);
+  const diffNoWhitespace = diffNoWhitespaceResult.status === 0 ? diffNoWhitespaceResult.stdout : '';
+  const stagedDiffNoWhitespaceResult = gitSync(['diff', '--staged', '-w'], directory);
+  const stagedDiffNoWhitespace = stagedDiffNoWhitespaceResult.status === 0 ? stagedDiffNoWhitespaceResult.stdout : '';
+  const fullDiffNoWhitespace = diffNoWhitespace + stagedDiffNoWhitespace;
+
+  // Extract content changes from normal diffs (for additions/deletions count)
+  const contentChanges = extractContentChanges(fullDiff);
+  const additions = contentChanges.filter(l => l.startsWith('+')).length;
+  const deletions = contentChanges.filter(l => l.startsWith('-')).length;
+
+  // Extract content changes from whitespace-ignoring diffs
+  const contentChangesNoWhitespace = extractContentChanges(fullDiffNoWhitespace);
+
+  // Determine if changes are whitespace-only:
+  // - Normal diff has changes but whitespace-ignoring diff doesn't
+  // - BUT structural changes (A/D/R/C/?) are never whitespace-only
+  let onlyWhitespace = contentChanges.length > 0 && contentChangesNoWhitespace.length === 0;
+  if (hasStructuralChanges) {
+    onlyWhitespace = false;
+  }
+
+  return {
+    hasChanges: filesChanged > 0,
+    filesChanged,
+    additions,
+    deletions,
+    onlyWhitespace,
+  };
+}
+
 // Helper: Handle timeout
 function handleTimeout(chunkId: string): void {
   const execution = activeExecutions.get(chunkId);
@@ -512,10 +616,54 @@ function handleError(chunkId: string, message: string): void {
   cleanup(chunkId, 'failed', message);
 }
 
-// Helper: Handle completion
+// Helper: Handle completion with file change validation
 function handleComplete(chunkId: string): void {
   const execution = activeExecutions.get(chunkId);
   const output = execution?.textOutput || 'Task completed';
+
+  // Get chunk info for logging
+  const chunk = getChunk(chunkId);
+
+  // Validate that actual file changes were made
+  const validation = validateFileChanges(execution?.directory || '');
+
+  // Log validation results for analytics
+  console.log('[EXECUTION VALIDATION]', {
+    chunkId,
+    specId: chunk?.specId,
+    chunkTitle: chunk?.title,
+    hasChanges: validation.hasChanges,
+    filesChanged: validation.filesChanged,
+    additions: validation.additions,
+    deletions: validation.deletions,
+    onlyWhitespace: validation.onlyWhitespace,
+    outcome: validation.hasChanges && !validation.onlyWhitespace ? 'completed' : 'failed',
+    timestamp: new Date().toISOString(),
+  });
+
+  // No changes detected - mark as failed
+  if (!validation.hasChanges) {
+    cleanup(
+      chunkId,
+      'failed',
+      'Execution completed but no file changes detected. The AI may have misunderstood the task or encountered an error.',
+      output
+    );
+    return;
+  }
+
+  // Only whitespace changes - mark as failed
+  if (validation.onlyWhitespace) {
+    cleanup(
+      chunkId,
+      'failed',
+      'Execution completed but only whitespace changes detected. No meaningful code changes were made.',
+      output
+    );
+    return;
+  }
+
+  // Valid changes - mark as completed
   cleanup(chunkId, 'completed', undefined, output);
 }
 
