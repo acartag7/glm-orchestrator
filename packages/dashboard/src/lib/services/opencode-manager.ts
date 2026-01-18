@@ -45,6 +45,12 @@ export class OpencodeManager extends EventEmitter {
     super();
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.status = { running: false, port: this.config.port };
+
+    // Attach default error handler to prevent unhandled 'error' event crashes
+    // Errors are already logged where they occur, this just prevents Node from crashing
+    this.on('error', (err) => {
+      console.error('[OpencodeManager] Error event:', err.message);
+    });
   }
 
   /**
@@ -62,8 +68,8 @@ export class OpencodeManager extends EventEmitter {
       try {
         console.log('[OpencodeManager] Starting opencode server...');
 
-        // Spawn opencode process
-        this.process = spawn('opencode', [], {
+        // Spawn opencode server process (must use 'serve' command with --port)
+        this.process = spawn('opencode', ['serve', '--port', String(this.config.port)], {
           detached: false,
           stdio: ['ignore', 'pipe', 'pipe'],
           env: { ...process.env },
@@ -206,14 +212,20 @@ export class OpencodeManager extends EventEmitter {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 2000);
 
-      const response = await fetch(`http://localhost:${this.config.port}/sessions`, {
+      // Use /global/health endpoint (same as OpencodeClient)
+      const response = await fetch(`http://localhost:${this.config.port}/global/health`, {
         method: 'GET',
         signal: controller.signal,
       });
 
       clearTimeout(timeout);
       this.status.lastHealthCheck = Date.now();
-      return response.ok;
+
+      if (response.ok) {
+        const data = await response.json() as { healthy?: boolean };
+        return data.healthy === true;
+      }
+      return false;
     } catch {
       return false;
     }
