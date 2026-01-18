@@ -19,6 +19,10 @@ export async function POST(request: Request) {
 
   if (action === 'restart') {
     const result = await opencodeManager.restart();
+    // Start health monitor after successful restart
+    if (result.success) {
+      opencodeManager.startHealthMonitor();
+    }
     return NextResponse.json(result);
   }
 

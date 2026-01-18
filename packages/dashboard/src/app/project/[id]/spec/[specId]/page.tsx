@@ -190,7 +190,33 @@ export default function SpecWorkspace() {
   const handleStopChunk = useCallback(async (chunk: Chunk) => {
     try {
       const res = await fetch(`/api/chunks/${chunk.id}/abort`, { method: 'POST' });
-      const data = await res.json();
+
+      // Check if response is OK before parsing
+      if (!res.ok) {
+        // Try to parse error message if JSON, otherwise use status text
+        const contentType = res.headers.get('Content-Type') || '';
+        if (contentType.includes('application/json')) {
+          const errorData = await res.json().catch(() => ({}));
+          console.error('Failed to stop chunk:', errorData.error || res.statusText);
+        } else {
+          const errorText = await res.text().catch(() => res.statusText);
+          console.error('Failed to stop chunk:', errorText);
+        }
+        return;
+      }
+
+      // Parse successful response
+      const contentType = res.headers.get('Content-Type') || '';
+      if (!contentType.includes('application/json')) {
+        console.error('Failed to stop chunk: unexpected response type');
+        return;
+      }
+
+      const data = await res.json().catch(() => null);
+      if (!data) {
+        console.error('Failed to stop chunk: invalid JSON response');
+        return;
+      }
 
       if (data.success) {
         // Refresh chunks to show cancelled status

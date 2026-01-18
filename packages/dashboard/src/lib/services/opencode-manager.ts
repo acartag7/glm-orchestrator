@@ -106,8 +106,23 @@ export class OpencodeManager extends EventEmitter {
         const startTime = Date.now();
         const checkReady = async () => {
           if (Date.now() - startTime > this.config.startTimeout) {
+            const timeoutError = 'Startup timeout - opencode may not be installed or failed to start';
             console.error('[OpencodeManager] Startup timeout');
-            resolve({ success: false, error: 'Startup timeout - opencode may not be installed or failed to start' });
+
+            // Clean up orphaned process
+            if (this.process) {
+              try {
+                this.process.kill();
+              } catch {
+                // Ignore kill errors
+              }
+              this.process = null;
+            }
+            this.status.running = false;
+            this.status.error = timeoutError;
+            this.emit('error', new Error(timeoutError));
+
+            resolve({ success: false, error: timeoutError });
             return;
           }
 
@@ -116,6 +131,7 @@ export class OpencodeManager extends EventEmitter {
             this.status.startedAt = Date.now();
             this.status.error = undefined;
             this.restartAttempts = 0;
+            this.isShuttingDown = false; // Allow auto-restart on future crashes
             console.log('[OpencodeManager] Server started successfully');
             this.emit('start');
             resolve({ success: true });
