@@ -329,7 +329,11 @@ export default function SpecWorkspace() {
   const handleConfirmResetAndRun = useCallback(async () => {
     setShowResetConfirm(false);
     setShowRunAllPanel(true);
-    await startRunAll({ reset: true });
+    // Start the run (reset happens synchronously at the start)
+    const runPromise = startRunAll({ reset: true });
+    // Refresh chunks after a short delay to catch the reset
+    setTimeout(() => refreshChunks(), 500);
+    await runPromise;
     await refreshChunks();
   }, [startRunAll, refreshChunks]);
 
