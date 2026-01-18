@@ -31,11 +31,16 @@ interface RunAllChunkStatus {
   fixChunkId?: string;
 }
 
+interface StartRunAllOptions {
+  /** Reset worktree and chunk statuses before running */
+  reset?: boolean;
+}
+
 interface UseRunAllReturn {
   state: RunAllState;
   chunkStatuses: RunAllChunkStatus[];
   currentToolCalls: ChunkToolCall[];
-  startRunAll: () => Promise<void>;
+  startRunAll: (options?: StartRunAllOptions) => Promise<void>;
   stopRunAll: () => Promise<void>;
   reset: () => void;
 }
@@ -242,7 +247,7 @@ export function useRunAll(specId: string): UseRunAllReturn {
     }
   }, []);
 
-  const startRunAll = useCallback(async () => {
+  const startRunAll = useCallback(async (options?: StartRunAllOptions) => {
     // Reset state
     setState({
       ...initialState,
@@ -260,8 +265,10 @@ export function useRunAll(specId: string): UseRunAllReturn {
       const response = await fetch(`/api/specs/${specId}/run-all`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           Accept: 'text/event-stream',
         },
+        body: JSON.stringify({ reset: options?.reset ?? false }),
       });
 
       if (!response.ok) {

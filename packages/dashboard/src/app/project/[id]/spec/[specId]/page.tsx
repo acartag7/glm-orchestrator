@@ -14,6 +14,7 @@ import { useExecution } from '@/hooks/useExecution';
 import { useRunAll } from '@/hooks/useRunAll';
 import { useWorkers } from '@/hooks/useWorkers';
 import ErrorBoundary from '@/components/ErrorBoundary';
+import ConfirmModal from '@/components/ConfirmModal';
 
 interface ChunkHistory {
   chunk: Chunk;
@@ -35,6 +36,7 @@ export default function SpecWorkspace() {
   const [chunkHistory, setChunkHistory] = useState<ChunkHistory | null>(null);
   const [showRunAllPanel, setShowRunAllPanel] = useState(false);
   const [showCompletePanel, setShowCompletePanel] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [gitError, setGitError] = useState<string | null>(null);
   const [reviewWarnings, setReviewWarnings] = useState<ReviewWarning[]>([]);
 
@@ -307,11 +309,27 @@ export default function SpecWorkspace() {
     clearReview();
   }, [clearReview]);
 
-  // Handle Run All
+  // Check if there's existing progress (non-pending chunks)
+  const hasExistingProgress = chunks.some(c =>
+    c.status !== 'pending' || c.reviewStatus || c.output
+  );
+
+  // Handle Run All - show confirmation if there's existing progress
   const handleRunAll = useCallback(async () => {
+    if (hasExistingProgress) {
+      setShowResetConfirm(true);
+      return;
+    }
     setShowRunAllPanel(true);
     await startRunAll();
-    // Refresh chunks after run all completes
+    await refreshChunks();
+  }, [startRunAll, refreshChunks, hasExistingProgress]);
+
+  // Handle confirmed reset and run
+  const handleConfirmResetAndRun = useCallback(async () => {
+    setShowResetConfirm(false);
+    setShowRunAllPanel(true);
+    await startRunAll({ reset: true });
     await refreshChunks();
   }, [startRunAll, refreshChunks]);
 
@@ -716,6 +734,18 @@ export default function SpecWorkspace() {
         </div>
       </div>
     </div>
+
+    {/* Reset confirmation modal (ORC-60) */}
+    {showResetConfirm && (
+      <ConfirmModal
+        title="Reset and Run All?"
+        message="This will reset all current progress. All chunk statuses, outputs, and uncommitted changes will be cleared. Are you sure you want to continue?"
+        confirmLabel="reset and run"
+        onConfirm={handleConfirmResetAndRun}
+        onCancel={() => setShowResetConfirm(false)}
+        isDanger
+      />
+    )}
     </ErrorBoundary>
   );
 }

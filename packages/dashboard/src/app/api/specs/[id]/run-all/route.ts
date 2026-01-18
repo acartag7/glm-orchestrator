@@ -41,8 +41,12 @@ function sendEvent(
 }
 
 // POST /api/specs/[id]/run-all
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const { id: specId } = await context.params;
+
+  // Parse request body for options
+  const body = await request.json().catch(() => ({})) as { reset?: boolean };
+  const resetBeforeRun = body.reset ?? false;
 
   // Validate spec exists
   const spec = getSpec(specId);
@@ -208,7 +212,7 @@ export async function POST(_request: Request, context: RouteContext) {
       };
 
       try {
-        await specExecutionService.runAll(specId, events);
+        await specExecutionService.runAll(specId, events, { reset: resetBeforeRun });
       } catch (error) {
         sendEvent(controller, encoder, isClosedRef, 'error', {
           message: error instanceof Error ? error.message : 'Unknown error',
