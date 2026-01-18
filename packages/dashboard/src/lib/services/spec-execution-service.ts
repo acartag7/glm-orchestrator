@@ -72,12 +72,17 @@ export interface SpecExecutionStats {
   durationMs: number;
 }
 
+export interface RunAllOptions {
+  /** Reset worktree and chunk statuses before running */
+  reset?: boolean;
+}
+
 export class SpecExecutionService {
   /**
    * Run all pending chunks in a spec
    * Handles dependencies, reviews, and git operations
    */
-  async runAll(specId: string, events?: SpecExecutionEvents): Promise<void> {
+  async runAll(specId: string, events?: SpecExecutionEvents, options?: RunAllOptions): Promise<void> {
     const startTime = Date.now();
 
     // Validate spec exists
@@ -129,6 +134,33 @@ export class SpecExecutionService {
         events?.onError?.(specId, 'Project not found');
         events?.onSpecComplete?.(specId, stats);
         return;
+      }
+
+      // Reset worktree and chunks if requested (ORC-60)
+      if (options?.reset) {
+        console.log('[Execution] Resetting worktree and chunk statuses');
+
+        // Reset all chunk statuses to pending
+        const existingChunks = getChunksBySpec(specId);
+        for (const chunk of existingChunks) {
+          if (chunk.status !== 'pending') {
+            updateChunk(chunk.id, {
+              status: 'pending',
+              error: undefined,
+              output: undefined,
+              reviewStatus: undefined,
+              reviewFeedback: undefined,
+              commitHash: undefined,
+            });
+          }
+        }
+
+        // Reset git worktree if it exists
+        const existingGitState = await gitService.initWorkflow(specId, project.directory);
+        if (existingGitState.enabled) {
+          gitService.resetHard(existingGitState);
+          console.log('[Execution] Worktree reset complete');
+        }
       }
 
       // Get all chunks
