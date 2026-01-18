@@ -7,7 +7,7 @@ const execAsync = promisify(exec);
 /**
  * Safe wrapper for git commands that prevents command injection
  */
-function gitSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number } {
+export function gitSync(args: string[], cwd: string): { stdout: string; stderr: string; status: number } {
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf-8',

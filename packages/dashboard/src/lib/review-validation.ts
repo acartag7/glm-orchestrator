@@ -7,8 +7,9 @@
  */
 
 import { spawnSync } from 'child_process';
+import { gitSync } from './git';
 
-const BUILD_TIMEOUT_MS = 180000; // 3 minutes max for build
+const DEFAULT_BUILD_TIMEOUT_MS = 180000; // 3 minutes max for build
 
 export interface ValidationResult {
   success: boolean;
@@ -30,15 +31,7 @@ export interface ValidationResult {
  * Get list of changed files (uncommitted changes)
  */
 function getChangedFiles(directory: string): { files: string[]; error?: string } {
-  const result = spawnSync('git', ['status', '--porcelain'], {
-    cwd: directory,
-    encoding: 'utf-8',
-    shell: false,
-  });
-
-  if (result.error) {
-    return { files: [], error: result.error.message };
-  }
+  const result = gitSync(['status', '--porcelain'], directory);
 
   if (result.status !== 0) {
     return { files: [], error: result.stderr || 'Failed to get git status' };
@@ -57,13 +50,9 @@ function getChangedFiles(directory: string): { files: string[]; error?: string }
  * Get git diff summary for review context
  */
 function getGitDiff(directory: string, maxLines: number = 100): string {
-  const result = spawnSync('git', ['diff', '--stat'], {
-    cwd: directory,
-    encoding: 'utf-8',
-    shell: false,
-  });
+  const result = gitSync(['diff', '--stat'], directory);
 
-  if (result.error || result.status !== 0) {
+  if (result.status !== 0) {
     return 'Unable to get diff summary';
   }
 
@@ -78,22 +67,23 @@ function getGitDiff(directory: string, maxLines: number = 100): string {
 /**
  * Run build command in the working directory
  */
-function runBuild(directory: string): { success: boolean; output: string; exitCode: number } {
+function runBuild(directory: string, timeoutMs: number): { success: boolean; output: string; exitCode: number } {
   // Try pnpm build first (most common for this project)
   const result = spawnSync('pnpm', ['build'], {
     cwd: directory,
     encoding: 'utf-8',
     shell: false,
-    timeout: BUILD_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large build output
   });
 
   if (result.error) {
     // Check if it's a timeout
     if ((result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+      const timeoutMinutes = Math.floor(timeoutMs / 60000);
       return {
         success: false,
-        output: 'Build timed out after 3 minutes',
+        output: `Build timed out after ${timeoutMinutes} minutes`,
         exitCode: -1,
       };
     }
@@ -131,6 +121,8 @@ export async function validateChunkCompletion(
   } = {}
 ): Promise<ValidationResult> {
   console.log(`[Review Validation] Validating chunk ${chunkId} in ${workingDirectory}`);
+
+  const buildTimeout = options.buildTimeout ?? DEFAULT_BUILD_TIMEOUT_MS;
 
   try {
     // 1. Check for file changes
@@ -178,7 +170,7 @@ export async function validateChunkCompletion(
 
     if (!options.skipBuild) {
       console.log(`[Review Validation] Running build for chunk ${chunkId}...`);
-      buildResult = runBuild(workingDirectory);
+      buildResult = runBuild(workingDirectory, buildTimeout);
       console.log(`[Review Validation] Build result: ${buildResult.success ? 'SUCCESS' : 'FAILED'}`);
 
       // Auto-fail if build fails
@@ -222,4 +214,3 @@ export async function validateChunkCompletion(
     };
   }
 }
-

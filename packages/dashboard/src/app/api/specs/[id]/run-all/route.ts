@@ -325,11 +325,11 @@ export async function POST(_request: Request, context: RouteContext) {
           return { success: false };
         }
 
-        // Pre-review validation: check for file changes and build success
-        sendEvent(controller, encoder, isClosedRef, 'validation_start', { chunkId });
-
+        // Pre-review validation: check for file changes and build success (only when git is enabled)
         let validation: ValidationResult | undefined;
-        if (gitDir) {
+        if (gitEnabled && gitDir) {
+          sendEvent(controller, encoder, isClosedRef, 'validation_start', { chunkId });
+
           validation = await validateChunkCompletion(gitDir, chunkId);
 
           sendEvent(controller, encoder, isClosedRef, 'validation_complete', {
@@ -369,7 +369,7 @@ export async function POST(_request: Request, context: RouteContext) {
         // Now review the chunk with Claude
         sendEvent(controller, encoder, isClosedRef, 'review_start', { chunkId });
 
-        // Build review prompt - use enhanced prompt if validation available
+        // Build review prompt - use enhanced prompt if validation available, otherwise use basic prompt
         const reviewPrompt = validation
           ? buildEnhancedReviewPrompt(updatedChunk, validation)
           : buildReviewPrompt(updatedChunk);
