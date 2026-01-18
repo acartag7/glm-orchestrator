@@ -79,19 +79,31 @@ function runPhase2Migrations(database: DatabaseType): void {
 }
 
 function runReviewLoopMigrations(database: DatabaseType): void {
-  // Check if migration is needed by checking if 'review_error' column exists
-  // (newer column added after initial review_status/review_feedback)
+  // Check if migration is needed by checking if all review columns exist
   const chunksTableInfo = database.prepare(`PRAGMA table_info(chunks)`).all() as { name: string }[];
   const hasReviewErrorColumn = chunksTableInfo.some(col => col.name === 'review_error');
+  const hasReviewAttemptsColumn = chunksTableInfo.some(col => col.name === 'review_attempts');
 
-  // Also check if final_review_status exists in specs
+  // Also check if final_review columns exist in specs
   const specsTableInfo = database.prepare(`PRAGMA table_info(specs)`).all() as { name: string }[];
   const hasFinalReviewStatusColumn = specsTableInfo.some(col => col.name === 'final_review_status');
+  const hasFinalReviewAttemptsColumn = specsTableInfo.some(col => col.name === 'final_review_attempts');
 
   // Check if review_logs table exists
   const tables = database.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='review_logs'`).all();
 
-  if (!hasReviewErrorColumn || !hasFinalReviewStatusColumn || tables.length === 0) {
+  // Check if duration_ms column exists in review_logs (newer column)
+  let hasDurationMsColumn = false;
+  if (tables.length > 0) {
+    const reviewLogsTableInfo = database.prepare(`PRAGMA table_info(review_logs)`).all() as { name: string }[];
+    hasDurationMsColumn = reviewLogsTableInfo.some(col => col.name === 'duration_ms');
+  }
+
+  const needsMigration = !hasReviewErrorColumn || !hasReviewAttemptsColumn ||
+                         !hasFinalReviewStatusColumn || !hasFinalReviewAttemptsColumn ||
+                         tables.length === 0 || !hasDurationMsColumn;
+
+  if (needsMigration) {
     for (const migration of MIGRATIONS_REVIEW_LOOP) {
       try {
         database.exec(migration);

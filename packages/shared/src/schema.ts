@@ -240,6 +240,7 @@ export const MIGRATIONS_REVIEW_LOOP = [
   `ALTER TABLE chunks ADD COLUMN review_attempts INTEGER DEFAULT 0`,
   `ALTER TABLE specs ADD COLUMN final_review_status TEXT DEFAULT 'pending'`,
   `ALTER TABLE specs ADD COLUMN final_review_feedback TEXT`,
+  `ALTER TABLE specs ADD COLUMN final_review_attempts INTEGER DEFAULT 0`,
   `CREATE TABLE IF NOT EXISTS review_logs (
     id TEXT PRIMARY KEY,
     chunk_id TEXT,
@@ -251,6 +252,7 @@ export const MIGRATIONS_REVIEW_LOOP = [
     error_message TEXT,
     error_type TEXT,
     attempt_number INTEGER NOT NULL,
+    duration_ms INTEGER,
     created_at TEXT NOT NULL,
     FOREIGN KEY (chunk_id) REFERENCES chunks(id) ON DELETE CASCADE,
     FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE
@@ -347,12 +349,15 @@ export const MIGRATIONS_CASCADE_DELETE = [
     branch_name TEXT,
     pr_number INTEGER,
     pr_url TEXT,
+    final_review_status TEXT DEFAULT 'pending',
+    final_review_feedback TEXT,
+    final_review_attempts INTEGER DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
   )`,
-  `INSERT INTO specs_new (id, project_id, title, content, version, status, branch_name, pr_number, pr_url, created_at, updated_at)
-   SELECT id, project_id, title, content, version, status, branch_name, pr_number, pr_url, created_at, updated_at
+  `INSERT INTO specs_new (id, project_id, title, content, version, status, branch_name, pr_number, pr_url, final_review_status, final_review_feedback, final_review_attempts, created_at, updated_at)
+   SELECT id, project_id, title, content, version, status, branch_name, pr_number, pr_url, COALESCE(final_review_status, 'pending'), final_review_feedback, COALESCE(final_review_attempts, 0), created_at, updated_at
    FROM specs WHERE project_id IN (SELECT id FROM projects)`,
   `DROP TABLE specs`,
   `ALTER TABLE specs_new RENAME TO specs`,
@@ -373,11 +378,13 @@ export const MIGRATIONS_CASCADE_DELETE = [
     completed_at INTEGER,
     review_status TEXT,
     review_feedback TEXT,
+    review_error TEXT,
+    review_attempts INTEGER DEFAULT 0,
     dependencies TEXT DEFAULT '[]',
     FOREIGN KEY (spec_id) REFERENCES specs(id) ON DELETE CASCADE
   )`,
-  `INSERT INTO chunks_new (id, spec_id, title, description, "order", status, output, output_summary, error, started_at, completed_at, review_status, review_feedback, dependencies)
-   SELECT id, spec_id, title, description, "order", status, output, output_summary, error, started_at, completed_at, review_status, review_feedback, dependencies
+  `INSERT INTO chunks_new (id, spec_id, title, description, "order", status, output, output_summary, error, started_at, completed_at, review_status, review_feedback, review_error, review_attempts, dependencies)
+   SELECT id, spec_id, title, description, "order", status, output, output_summary, error, started_at, completed_at, review_status, review_feedback, review_error, COALESCE(review_attempts, 0), dependencies
    FROM chunks WHERE spec_id IN (SELECT id FROM specs)`,
   `DROP TABLE chunks`,
   `ALTER TABLE chunks_new RENAME TO chunks`,

@@ -17,10 +17,29 @@ export interface PlannerConfig {
 }
 
 export interface ReviewerConfig {
+  // Legacy fields (kept for backwards compat)
   type: 'sonnet-quick' | 'opus-thorough';
   cliPath?: string;
   autoApprove?: boolean;
+
+  // New fields for dual-review strategy
+  chunkModel?: 'haiku' | 'sonnet';         // Default: 'haiku'
+  finalModel?: 'opus' | 'sonnet';          // Default: 'opus'
+  chunkTimeout?: number;                    // Default: 180000 (3 min)
+  finalTimeout?: number;                    // Default: 600000 (10 min)
+  maxRetries?: number;                      // Default: 3
+  retryBackoffMs?: number;                  // Default: 2000
+  finalReviewMaxFixAttempts?: number;       // Default: 2 (how many fix rounds for final review)
 }
+
+export const CLAUDE_MODELS = {
+  haiku: 'claude-haiku-4-5-20251001',
+  sonnet: 'claude-sonnet-4-5-20250929',
+  opus: 'claude-opus-4-5-20251101'
+} as const;
+
+export type ClaudeModelKey = keyof typeof CLAUDE_MODELS;
+export type ClaudeModelId = typeof CLAUDE_MODELS[ClaudeModelKey];
 
 export interface ProjectConfig {
   executor: ExecutorConfig;
@@ -44,7 +63,14 @@ export const DEFAULT_PROJECT_CONFIG: ProjectConfig = {
   reviewer: {
     type: 'sonnet-quick',
     cliPath: 'claude',
-    autoApprove: false
+    autoApprove: false,
+    chunkModel: 'haiku',
+    finalModel: 'opus',
+    chunkTimeout: 180000,      // 3 minutes
+    finalTimeout: 600000,      // 10 minutes
+    maxRetries: 3,
+    retryBackoffMs: 2000,
+    finalReviewMaxFixAttempts: 2
   },
   maxIterations: 5
 };
