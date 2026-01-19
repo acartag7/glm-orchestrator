@@ -155,37 +155,71 @@ const tier3Check = async (file: string, name: string, expected: string): Promise
 // ============================================
 
 /**
- * What's available from previous chunks
+ * NOTE: AvailableResource is imported from ORC-61's unified resource model.
+ * See ORC-61 Data Model for full ContractResource discriminated union.
+ *
+ * AvailableResource represents a resource that:
+ * - Was created by a previous step
+ * - Has been validated (passed assertions)
+ * - Is now available for downstream steps to consume
  */
-export interface AvailableExport {
-  name: string;              // "HealthCheckResult"
-  from: string;              // "@specwright/shared"
-  type: 'type' | 'interface' | 'function' | 'const' | 'class';
-  createdByChunk: string;    // Chunk ID that created this
-  file: string;              // Actual file path
-}
+import type { AvailableResource, CreatedResource } from './contract-types';
 
 /**
- * Execution context passed between chunks
+ * Execution context passed between chunks (steps).
+ * Uses the unified resource model from ORC-61.
  */
 export interface ChunkExecutionContext {
-  // What previous chunks have created
-  availableExports: AvailableExport[];
+  /**
+   * Resources available from previous steps.
+   * Only includes resources that have passed validation (phase: 'available').
+   */
+  availableResources: AvailableResource[];
 
-  // Files that exist (created or modified)
+  /**
+   * Files that exist (created or modified).
+   * Maps to CreatedResource with additional file-specific metadata.
+   */
   availableFiles: {
     path: string;
     exports: string[];
-    createdByChunk?: string;
-    modifiedByChunk?: string;
+    createdByStep?: string;
+    modifiedByStep?: string;
   }[];
 
-  // Git diff summary
+  /**
+   * Git diff summary for context accumulation.
+   */
   changesSoFar: {
     filesCreated: string[];
     filesModified: string[];
     totalAdditions: number;
     totalDeletions: number;
+  };
+}
+
+/**
+ * Helper to convert legacy AvailableExport to unified AvailableResource.
+ * For backward compatibility during migration.
+ */
+export function toAvailableResource(legacy: {
+  name: string;
+  from: string;
+  type: 'type' | 'interface' | 'function' | 'const' | 'class';
+  createdByChunk: string;
+  file: string;
+}): AvailableResource {
+  return {
+    id: `${legacy.from}:${legacy.name}`,
+    type: 'file',
+    phase: 'available',
+    location: legacy.file,
+    format: 'typescript',
+    exportName: legacy.name,
+    exportType: legacy.type,
+    importFrom: legacy.from,
+    providedByStep: legacy.createdByChunk,
+    verifiedAt: new Date().toISOString()
   };
 }
 
@@ -357,11 +391,11 @@ export async function checkPreExecutionGate(
   // 2. Check consumes are available in context
   if (chunk.consumes && chunk.consumes.length > 0) {
     for (const item of chunk.consumes) {
-      const available = context.availableExports.some(e => e.name === item);
+      const available = context.availableResources.some(r => r.exportName === item);
       if (!available) {
         blockers.push({
           type: 'missing_export',
-          details: `Required export "${item}" not available from previous chunks`
+          details: `Required export "${item}" not available from previous steps`
         });
       }
     }
@@ -415,29 +449,32 @@ export function buildExecutorPrompt(
     }
   }
 
-  // 4. Available imports (from previous chunks)
-  if (context.availableExports.length > 0) {
+  // 4. Available imports (from previous steps - unified resource model)
+  if (context.availableResources.length > 0) {
     sections.push(`\n## AVAILABLE IMPORTS (verified to exist)\n`);
 
-    // Group by source
-    const bySource = new Map<string, AvailableExport[]>();
-    context.availableExports.forEach(exp => {
-      const list = bySource.get(exp.from) || [];
-      list.push(exp);
-      bySource.set(exp.from, list);
-    });
+    // Group by import source
+    const bySource = new Map<string, AvailableResource[]>();
+    context.availableResources
+      .filter(r => r.type === 'file')  // Only file resources have imports
+      .forEach(resource => {
+        const importFrom = resource.importFrom;
+        const list = bySource.get(importFrom) || [];
+        list.push(resource);
+        bySource.set(importFrom, list);
+      });
 
-    bySource.forEach((exports, source) => {
+    bySource.forEach((resources, source) => {
       sections.push(`\nFrom "${source}":`);
-      exports.forEach(exp => {
-        sections.push(`  - ${exp.name} (${exp.type})`);
+      resources.forEach(r => {
+        sections.push(`  - ${r.exportName} (${r.exportType})`);
       });
     });
   }
 
   // 5. What NOT to import (in consumes but not yet available)
   const notYetAvailable = (chunk.consumes || []).filter(item =>
-    !context.availableExports.some(e => e.name === item)
+    !context.availableResources.some(r => r.exportName === item)
   );
   if (notYetAvailable.length > 0) {
     sections.push(`\n## DO NOT IMPORT (you must create these)\n`);
@@ -687,7 +724,7 @@ export class ContextAccumulator {
       .sort((a, b) => a.order - b.order);
 
     const context: ChunkExecutionContext = {
-      availableExports: [],
+      availableResources: [],
       availableFiles: [],
       changesSoFar: {
         filesCreated: [],
@@ -697,11 +734,11 @@ export class ContextAccumulator {
       }
     };
 
-    // Accumulate from each previous chunk
+    // Accumulate from each previous step
     for (const chunk of previousChunks) {
       const chunkContext = await this.getStoredContext(chunk.id);
       if (chunkContext) {
-        context.availableExports.push(...chunkContext.availableExports);
+        context.availableResources.push(...chunkContext.availableResources);
         context.availableFiles.push(...chunkContext.availableFiles);
         context.changesSoFar.filesCreated.push(...chunkContext.changesSoFar.filesCreated);
         context.changesSoFar.filesModified.push(...chunkContext.changesSoFar.filesModified);
@@ -710,36 +747,45 @@ export class ContextAccumulator {
       }
     }
 
-    // Deduplicate
-    context.availableExports = this.deduplicateExports(context.availableExports);
+    // Deduplicate resources by ID
+    context.availableResources = this.deduplicateResources(context.availableResources);
 
     return context;
   }
 
   /**
-   * Record what a chunk created (called after successful execution)
+   * Record what a step created (called after successful execution and validation).
+   * Creates AvailableResource entries for verified exports.
    */
-  async recordChunkContext(chunkId: string): Promise<ChunkExecutionContext> {
+  async recordChunkContext(stepId: string): Promise<ChunkExecutionContext> {
     // Get git diff for uncommitted changes
     const diff = await this.parseGitDiff();
 
-    // Find exports in changed files
-    const exports: AvailableExport[] = [];
+    // Find exports in changed files and convert to AvailableResource
+    const resources: AvailableResource[] = [];
+    const now = new Date().toISOString();
 
     for (const file of [...diff.created, ...diff.modified]) {
       const fileExports = await this.findExportsInFile(file);
-      exports.push(...fileExports.map(exp => ({
-        ...exp,
-        createdByChunk: chunkId,
-        file
+      resources.push(...fileExports.map(exp => ({
+        id: `${exp.from}:${exp.name}`,
+        type: 'file' as const,
+        phase: 'available' as const,
+        location: file,
+        format: file.match(/\.tsx?$/) ? 'typescript' : 'javascript',
+        exportName: exp.name,
+        exportType: exp.type,
+        importFrom: exp.from,
+        providedByStep: stepId,
+        verifiedAt: now
       })));
     }
 
     const context: ChunkExecutionContext = {
-      availableExports: exports,
+      availableResources: resources,
       availableFiles: [
-        ...diff.created.map(p => ({ path: p, exports: [], createdByChunk: chunkId })),
-        ...diff.modified.map(p => ({ path: p, exports: [], modifiedByChunk: chunkId }))
+        ...diff.created.map(p => ({ path: p, exports: [], createdByStep: stepId })),
+        ...diff.modified.map(p => ({ path: p, exports: [], modifiedByStep: stepId }))
       ],
       changesSoFar: {
         filesCreated: diff.created,
@@ -750,7 +796,7 @@ export class ContextAccumulator {
     };
 
     // Store in database
-    await this.storeContext(chunkId, context);
+    await this.storeContext(stepId, context);
 
     return context;
   }
@@ -807,12 +853,16 @@ export class ContextAccumulator {
     return { created, modified, additions, deletions };
   }
 
-  private async findExportsInFile(filePath: string): Promise<Omit<AvailableExport, 'createdByChunk' | 'file'>[]> {
+  private async findExportsInFile(filePath: string): Promise<{
+    name: string;
+    from: string;
+    type: 'type' | 'interface' | 'function' | 'const' | 'class';
+  }[]> {
     const fullPath = path.join(this.workingDir, filePath);
 
     try {
       const content = await fs.readFile(fullPath, 'utf-8');
-      const exports: Omit<AvailableExport, 'createdByChunk' | 'file'>[] = [];
+      const exports: { name: string; from: string; type: 'type' | 'interface' | 'function' | 'const' | 'class' }[] = [];
 
       // Match: export const/function/interface/type/class Name
       const pattern = /export\s+(const|function|interface|type|class)\s+(\w+)/g;
@@ -822,7 +872,7 @@ export class ContextAccumulator {
         exports.push({
           name: match[2],
           from: this.getImportPath(filePath),
-          type: match[1] as AvailableExport['type']
+          type: match[1] as 'type' | 'interface' | 'function' | 'const' | 'class'
         });
       }
 
@@ -845,12 +895,14 @@ export class ContextAccumulator {
     return filePath;
   }
 
-  private deduplicateExports(exports: AvailableExport[]): AvailableExport[] {
-    const seen = new Map<string, AvailableExport>();
-    for (const exp of exports) {
-      const key = `${exp.from}:${exp.name}`;
-      if (!seen.has(key)) {
-        seen.set(key, exp);
+  /**
+   * Deduplicate resources by their unique ID.
+   */
+  private deduplicateResources(resources: AvailableResource[]): AvailableResource[] {
+    const seen = new Map<string, AvailableResource>();
+    for (const resource of resources) {
+      if (!seen.has(resource.id)) {
+        seen.set(resource.id, resource);
       }
     }
     return Array.from(seen.values());
@@ -1335,6 +1387,10 @@ Define the core interface all validators must implement:
 /**
  * Core validator interface.
  * All validators (built-in and custom) must implement this interface.
+ *
+ * NOTE: Validators operate on CreatedResource (phase: 'created') because
+ * validation happens BEFORE a resource is promoted to AvailableResource.
+ * The lifecycle is: PlannedResource → CreatedResource → [validate] → AvailableResource
  */
 export interface Validator {
   /** Unique identifier for this validator (e.g., "file-export", "json-schema") */
@@ -1344,20 +1400,29 @@ export interface Validator {
   supportedResourceTypes: string[];
 
   /**
+   * File formats this validator handles (for auto-selection).
+   * E.g., ["typescript", "javascript"] or ["json", "yaml"]
+   */
+  supportedFormats?: string[];
+
+  /**
    * Check if this validator can handle a specific resource.
    * More granular than supportedResourceTypes - can check metadata, format, etc.
+   * @param resource - Resource to check (typically CreatedResource being validated)
    */
-  supports(resource: ContractResource): boolean;
+  supports(resource: CreatedResource | AvailableResource): boolean;
 
   /**
    * Validate the resource exists and matches expectations.
-   * @param resource - The resource to validate
+   * Called on CreatedResource BEFORE it is promoted to AvailableResource.
+   *
+   * @param resource - The newly created resource to validate
    * @param assertion - The assertion defining what to check
    * @param context - Execution context with available resources and outputs
    * @returns Validation result with pass/fail and details
    */
   validate(
-    resource: ContractResource,
+    resource: CreatedResource,
     assertion: ContractAssertion,
     context: ValidationContext
   ): Promise<ValidationResult>;
@@ -1365,14 +1430,23 @@ export interface Validator {
 
 /**
  * Context passed to validators during validation.
- * Provides access to execution state and other resources.
+ * Uses the unified resource model with phase-aware types.
  */
 export interface ValidationContext {
   /** Working directory for file operations */
   workingDir?: string;
 
-  /** All resources defined in the contract */
-  availableResources: ContractResource[];
+  /**
+   * Resources available from previous steps (phase: 'available').
+   * These have already been validated and can be consumed.
+   */
+  availableResources: AvailableResource[];
+
+  /**
+   * Resources created by current step (phase: 'created').
+   * These are being validated before promotion to 'available'.
+   */
+  createdResources: CreatedResource[];
 
   /** Outputs from completed steps, keyed by step ID */
   stepOutputs: Map<string, unknown>;
@@ -1380,8 +1454,37 @@ export interface ValidationContext {
   /** Protocol being used (affects resource interpretation) */
   protocol: string;
 
+  /** Configured validators from the contract */
+  validators: ValidatorConfig[];
+
   /** Additional protocol-specific context */
   metadata?: Record<string, unknown>;
+}
+
+/**
+ * Configuration for a validator in a contract.
+ * Supports hybrid auto-selection with explicit override.
+ */
+export interface ValidatorConfig {
+  /** Validator type identifier */
+  type: string;
+
+  /** Resource types this validator handles */
+  resourceTypes: string[];
+
+  /** Validator-specific options */
+  options?: Record<string, unknown>;
+
+  /**
+   * Auto-selection rules.
+   * When set, this validator is automatically chosen for matching resources.
+   */
+  autoSelect?: {
+    /** File formats that trigger auto-selection */
+    formats?: string[];
+    /** Additional conditions (simple expression) */
+    conditions?: string;
+  };
 }
 
 /**
@@ -1803,12 +1906,33 @@ export const ExistsValidator: Validator = {
 };
 ```
 
-## 3. Validator Registry
+## 3. Validator Registry with Hybrid Selection
+
+The registry implements a resolution chain for validator selection:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  HYBRID VALIDATOR SELECTION                                     │
+│  Resolution order (first match wins):                           │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Assertion-level override                                    │
+│     └─ assertion.check.validator = "file-ast"                   │
+│  2. Resource-level default                                      │
+│     └─ resource.validator = "json-schema"                       │
+│  3. Auto-detection from format                                  │
+│     └─ resource.format = "json" → JSONSchemaValidator           │
+│  4. Auto-detection from type                                    │
+│     └─ resource.type = "file" → FileExportValidator            │
+│  5. Contract-level fallback                                     │
+│     └─ contract.validators[].autoSelect rules                   │
+│  6. Default: ExistsValidator                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ```typescript
 /**
  * Registry for managing validators.
- * Allows registration of custom validators and automatic selection.
+ * Implements hybrid auto-selection with explicit override.
  */
 export interface ValidatorRegistry {
   /**
@@ -1824,16 +1948,25 @@ export interface ValidatorRegistry {
 
   /**
    * Find all validators that support a given resource.
-   * Returns validators in priority order.
+   * Returns validators in priority order based on specificity.
    */
-  findFor(resource: ContractResource): Validator[];
+  findFor(resource: CreatedResource): Validator[];
 
   /**
-   * Validate a resource using automatic validator selection.
-   * Tries validators in order until one handles the assertion.
+   * Select the best validator for a resource + assertion.
+   * Implements the hybrid selection resolution chain.
+   */
+  selectValidator(
+    resource: CreatedResource,
+    assertion: ContractAssertion,
+    context: ValidationContext
+  ): Validator | undefined;
+
+  /**
+   * Validate a resource using hybrid validator selection.
    */
   validate(
-    resource: ContractResource,
+    resource: CreatedResource,
     assertion: ContractAssertion,
     context: ValidationContext
   ): Promise<ValidationResult>;
@@ -1845,7 +1978,7 @@ export interface ValidatorRegistry {
 export function createValidatorRegistry(): ValidatorRegistry {
   const validators = new Map<string, Validator>();
 
-  // Register built-in validators
+  // Register built-in validators with auto-select metadata
   validators.set('exists', ExistsValidator);
   validators.set('file-export', FileExportValidator);
   validators.set('file-ast', FileASTValidator);
@@ -1867,29 +2000,68 @@ export function createValidatorRegistry(): ValidatorRegistry {
           (v.supportedResourceTypes.includes('*') ||
            v.supportedResourceTypes.includes(resource.type)) &&
           v.supports(resource)
-        );
+        )
+        .sort((a, b) => {
+          // Prioritize format-specific validators
+          const aHasFormat = a.supportedFormats?.includes(resource.format || '') ? 1 : 0;
+          const bHasFormat = b.supportedFormats?.includes(resource.format || '') ? 1 : 0;
+          return bHasFormat - aHasFormat;
+        });
+    },
+
+    selectValidator(resource, assertion, context) {
+      // 1. Assertion-level override (highest priority)
+      if (assertion.check.validator) {
+        const validator = validators.get(assertion.check.validator);
+        if (validator) return validator;
+        console.warn(`Unknown validator: ${assertion.check.validator}`);
+      }
+
+      // 2. Resource-level default
+      if (resource.metadata?.validator) {
+        const validator = validators.get(resource.metadata.validator as string);
+        if (validator) return validator;
+      }
+
+      // 3. Auto-detection from format
+      if (resource.format) {
+        for (const v of validators.values()) {
+          if (v.supportedFormats?.includes(resource.format) && v.supports(resource)) {
+            return v;
+          }
+        }
+      }
+
+      // 4. Auto-detection from resource type
+      const typeValidators = this.findFor(resource);
+      if (typeValidators.length > 0) {
+        return typeValidators[0];
+      }
+
+      // 5. Contract-level fallback (check configured validators)
+      for (const config of context.validators || []) {
+        if (config.resourceTypes.includes(resource.type) ||
+            config.resourceTypes.includes('*')) {
+          const validator = validators.get(config.type);
+          if (validator && config.autoSelect) {
+            // Check auto-select conditions
+            const formatMatch = !config.autoSelect.formats ||
+              config.autoSelect.formats.includes(resource.format || '');
+            if (formatMatch && validator.supports(resource)) {
+              return validator;
+            }
+          }
+        }
+      }
+
+      // 6. Default: ExistsValidator
+      return validators.get('exists');
     },
 
     async validate(resource, assertion, context) {
-      // If assertion specifies a validator, use it
-      if (assertion.check.validator) {
-        const validator = validators.get(assertion.check.validator);
-        if (!validator) {
-          return {
-            passed: false,
-            validator: 'unknown',
-            resource,
-            assertion,
-            error: `Unknown validator: ${assertion.check.validator}`,
-            duration: 0
-          };
-        }
-        return validator.validate(resource, assertion, context);
-      }
+      const validator = this.selectValidator(resource, assertion, context);
 
-      // Auto-select based on resource type and assertion
-      const candidates = this.findFor(resource);
-      if (candidates.length === 0) {
+      if (!validator) {
         return {
           passed: false,
           validator: 'none',
@@ -1900,8 +2072,7 @@ export function createValidatorRegistry(): ValidatorRegistry {
         };
       }
 
-      // Use first matching validator
-      return candidates[0].validate(resource, assertion, context);
+      return validator.validate(resource, assertion, context);
     }
   };
 }

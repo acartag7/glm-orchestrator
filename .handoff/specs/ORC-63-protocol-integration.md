@@ -86,14 +86,23 @@ import type {
   AgentContract,
   ContractStep,
   ContractResource,
+  PlannedResource,
+  CreatedResource,
+  AvailableResource,
   ContractAssertion,
-  ValidationResult
+  ValidationResult,
+  ValidatorRegistry
 } from './contract-types';
 
 /**
  * Core interface all protocol adapters must implement.
  * Provides bidirectional conversion between protocol-specific formats
  * and the generic AgentContract format.
+ *
+ * Uses the unified resource model from ORC-61:
+ * - PlannedResource: What WILL be created (in contract)
+ * - CreatedResource: What WAS just created (extractResources output)
+ * - AvailableResource: What IS available (after validation, injectContext input)
  */
 export interface ProtocolAdapter<
   TWorkflow = unknown,
@@ -111,9 +120,10 @@ export interface ProtocolAdapter<
 
   /**
    * Convert protocol-specific workflow definition to AgentContract.
+   * Returns contract with PlannedResource[] (phase: 'planned').
    * @param workflow - Protocol-specific workflow (A2A task, MCP tool list, etc.)
    * @param options - Conversion options
-   * @returns Standardized AgentContract
+   * @returns Standardized AgentContract with planned resources
    */
   toContract(workflow: TWorkflow, options?: AdapterOptions): AgentContract;
 
@@ -127,20 +137,22 @@ export interface ProtocolAdapter<
   /**
    * Extract resources from protocol-specific execution output.
    * Called after each step to discover what was created.
+   * Returns CreatedResource[] (phase: 'created') for validation.
    * @param output - Raw output from agent/tool execution
    * @param step - The contract step that produced this output
-   * @returns Resources that were created/modified
+   * @returns Resources that were created/modified (needs validation)
    */
-  extractResources(output: TOutput, step: ContractStep): ContractResource[];
+  extractResources(output: TOutput, step: ContractStep): CreatedResource[];
 
   /**
    * Inject contract context into protocol-specific format.
-   * Prepares context for the next step based on available resources.
+   * Prepares context for the next step based on validated resources.
+   * Receives AvailableResource[] (phase: 'available') - only verified resources.
    * @param step - Current step being executed
-   * @param available - Resources available from previous steps
+   * @param available - Validated resources from previous steps
    * @returns Protocol-specific context format
    */
-  injectContext(step: ContractStep, available: ContractResource[]): TContext;
+  injectContext(step: ContractStep, available: AvailableResource[]): TContext;
 
   /**
    * Wrap protocol execution with contract verification.
@@ -187,6 +199,10 @@ export interface AdapterOptions {
 /**
  * Result of verified execution.
  * Includes both the execution result and verification details.
+ *
+ * Uses phase-aware resource types:
+ * - resourcesCreated: CreatedResource[] - just created, pending validation
+ * - resourcesPromoted: AvailableResource[] - validated and promoted
  */
 export interface VerifiedResult<T> {
   /** The actual execution result */
@@ -214,8 +230,18 @@ export interface VerifiedResult<T> {
       failedAssertions?: ContractAssertion[];
     };
 
-    /** Resources created by this step */
-    resourcesCreated: ContractResource[];
+    /**
+     * Resources created by this step (phase: 'created').
+     * These are extracted but not yet validated.
+     */
+    resourcesCreated: CreatedResource[];
+
+    /**
+     * Resources promoted to available (phase: 'available').
+     * Only present if validation passed.
+     * These can be consumed by subsequent steps.
+     */
+    resourcesPromoted?: AvailableResource[];
 
     /** Execution timing */
     timing: {
@@ -500,36 +526,34 @@ export const SpecwrightAdapter: ProtocolAdapter<
       }
     }));
 
-    // Extract resources from spec contract if available
-    const resources: ContractResource[] = [];
+    // Extract resources from spec contract as PlannedResource[] (phase: 'planned')
+    const resources: PlannedResource[] = [];
     if (spec.contract) {
       const contract = JSON.parse(spec.contract);
-      // Map types to resources
+      // Map types to planned resources
       (contract.types || []).forEach((t: ContractType) => {
         resources.push({
           id: `type_${t.name}`,
           type: 'file',
+          phase: 'planned',
           location: t.file,
           format: 'typescript',
-          metadata: {
-            exportName: t.name,
-            exportedFrom: t.exportedFrom,
-            definition: t.definition
-          }
+          definition: t.definition,
+          exportedFrom: t.exportedFrom,
+          exports: [t.name]
         });
       });
-      // Map files to resources
+      // Map files to planned resources
       (contract.files || []).forEach((f: ContractFile) => {
         resources.push({
           id: `file_${f.path.replace(/[\/\.]/g, '_')}`,
           type: 'file',
+          phase: 'planned',
           location: f.path,
           format: f.path.endsWith('.ts') ? 'typescript' : 'unknown',
-          metadata: {
-            action: f.action,
-            purpose: f.purpose,
-            exports: f.exports
-          }
+          action: f.action,
+          purpose: f.purpose,
+          exports: f.exports
         });
       });
     }
@@ -578,8 +602,9 @@ export const SpecwrightAdapter: ProtocolAdapter<
     };
   },
 
-  extractResources(output: ChunkOutput, step: ContractStep): ContractResource[] {
-    const resources: ContractResource[] = [];
+  extractResources(output: ChunkOutput, step: ContractStep): CreatedResource[] {
+    const resources: CreatedResource[] = [];
+    const now = new Date().toISOString();
 
     // Parse git diff from output to find created/modified files
     const filePattern = /(?:create|modify|update)\s+(?:mode\s+\d+\s+)?([^\s]+)/gi;
@@ -589,11 +614,12 @@ export const SpecwrightAdapter: ProtocolAdapter<
       resources.push({
         id: `file_${filePath.replace(/[\/\.]/g, '_')}`,
         type: 'file',
+        phase: 'created',
         location: filePath,
+        actualLocation: filePath,
         format: filePath.match(/\.(ts|tsx)$/) ? 'typescript' : 'unknown',
-        metadata: {
-          createdByStep: step.id
-        }
+        createdByStep: step.id,
+        createdAt: now
       });
     }
 
@@ -604,11 +630,13 @@ export const SpecwrightAdapter: ProtocolAdapter<
       resources.push({
         id: `export_${exportName}`,
         type: 'file',
+        phase: 'created',
         format: 'typescript',
+        createdByStep: step.id,
+        createdAt: now,
+        actualExports: [exportName],
         metadata: {
-          exportName,
-          exportType,
-          createdByStep: step.id
+          exportType
         }
       });
     }
@@ -616,7 +644,7 @@ export const SpecwrightAdapter: ProtocolAdapter<
     return resources;
   },
 
-  injectContext(step: ContractStep, available: ContractResource[]): string {
+  injectContext(step: ContractStep, available: AvailableResource[]): string {
     const sections: string[] = [];
 
     // Task description
@@ -630,24 +658,22 @@ export const SpecwrightAdapter: ProtocolAdapter<
       sections.push('\nThese are REQUIRED. The step will fail if any are missing.');
     }
 
-    // Available imports from previous steps
-    const exports = available.filter(r => r.metadata?.exportName);
-    if (exports.length > 0) {
+    // Available imports from previous steps (AvailableResource has exportName/exportType)
+    if (available.length > 0) {
       sections.push('\n## AVAILABLE IMPORTS (verified to exist)');
 
-      // Group by source
-      const bySource = new Map<string, ContractResource[]>();
-      exports.forEach(exp => {
-        const from = exp.metadata?.exportedFrom as string || exp.location || 'unknown';
-        const list = bySource.get(from) || [];
-        list.push(exp);
-        bySource.set(from, list);
+      // Group by import source
+      const bySource = new Map<string, AvailableResource[]>();
+      available.forEach(resource => {
+        const list = bySource.get(resource.importFrom) || [];
+        list.push(resource);
+        bySource.set(resource.importFrom, list);
       });
 
-      bySource.forEach((exps, source) => {
+      bySource.forEach((resources, source) => {
         sections.push(`\nFrom "${source}":`);
-        exps.forEach(exp => {
-          sections.push(`  - ${exp.metadata?.exportName} (${exp.metadata?.exportType || 'export'})`);
+        resources.forEach(r => {
+          sections.push(`  - ${r.exportName} (${r.exportType})`);
         });
       });
     }
@@ -824,26 +850,29 @@ export const A2AAdapter: ProtocolAdapter<A2AWorkflow, A2AMessage, A2AMessage> = 
       }
     });
 
-    // Map artifacts to resources
-    const resources: ContractResource[] = (task.artifacts || []).map(artifact => ({
+    // Map artifacts to planned resources (phase: 'planned')
+    const resources: PlannedResource[] = (task.artifacts || []).map(artifact => ({
       id: `artifact_${artifact.name}`,
       type: 'artifact',
+      phase: 'planned' as const,
       format: detectFormatFromParts(artifact.parts),
+      purpose: artifact.description,
       metadata: {
         name: artifact.name,
-        description: artifact.description,
         a2aArtifact: true
       }
     }));
 
-    // Map message parts to resources
+    // Map message parts to planned resources
     task.message.parts.forEach((part, index) => {
       if (part.type === 'file') {
         resources.push({
           id: `file_${part.file.name}`,
           type: 'file',
+          phase: 'planned',
           location: part.file.uri,
           format: part.file.mimeType,
+          purpose: `File attachment: ${part.file.name}`,
           metadata: {
             fileName: part.file.name,
             a2aFilePart: true
@@ -853,9 +882,10 @@ export const A2AAdapter: ProtocolAdapter<A2AWorkflow, A2AMessage, A2AMessage> = 
         resources.push({
           id: `data_${index}`,
           type: 'data',
+          phase: 'planned',
           format: 'json',
-          schema: inferSchemaFromData(part.data),
           metadata: {
+            schema: inferSchemaFromData(part.data),
             a2aDataPart: true
           }
         });
@@ -918,40 +948,48 @@ export const A2AAdapter: ProtocolAdapter<A2AWorkflow, A2AMessage, A2AMessage> = 
     return { task };
   },
 
-  extractResources(output: A2AMessage, step: ContractStep): ContractResource[] {
-    const resources: ContractResource[] = [];
+  extractResources(output: A2AMessage, step: ContractStep): CreatedResource[] {
+    const resources: CreatedResource[] = [];
+    const now = new Date().toISOString();
 
     output.parts.forEach((part, index) => {
       if (part.type === 'text') {
         resources.push({
           id: `text_${step.id}_${index}`,
           type: 'message',
+          phase: 'created',
           format: 'text',
+          createdByStep: step.id,
+          createdAt: now,
           metadata: {
-            content: part.text,
-            createdByStep: step.id
+            content: part.text
           }
         });
       } else if (part.type === 'file') {
         resources.push({
           id: `file_${part.file.name}`,
           type: 'file',
+          phase: 'created',
           location: part.file.uri,
+          actualLocation: part.file.uri,
           format: part.file.mimeType,
+          createdByStep: step.id,
+          createdAt: now,
           metadata: {
-            fileName: part.file.name,
-            createdByStep: step.id
+            fileName: part.file.name
           }
         });
       } else if (part.type === 'data') {
         resources.push({
           id: `data_${step.id}_${index}`,
           type: 'data',
+          phase: 'created',
           format: 'json',
-          schema: inferSchemaFromData(part.data),
+          createdByStep: step.id,
+          createdAt: now,
           metadata: {
             data: part.data,
-            createdByStep: step.id
+            schema: inferSchemaFromData(part.data)
           }
         });
       }
@@ -960,15 +998,15 @@ export const A2AAdapter: ProtocolAdapter<A2AWorkflow, A2AMessage, A2AMessage> = 
     return resources;
   },
 
-  injectContext(step: ContractStep, available: ContractResource[]): A2AMessage {
+  injectContext(step: ContractStep, available: AvailableResource[]): A2AMessage {
     // Format available resources as A2A context message
     const parts: A2APart[] = [];
 
-    // Add context description
+    // Add context description with verified resources
     parts.push({
       type: 'text',
-      text: `Context from previous steps:\n${available.map(r =>
-        `- ${r.id}: ${r.type} (${r.format || 'unknown format'})`
+      text: `Context from previous steps (verified):\n${available.map(r =>
+        `- ${r.exportName || r.id}: ${r.type} from ${r.importFrom} (${r.format || 'unknown format'})`
       ).join('\n')}`
     });
 
@@ -1108,16 +1146,17 @@ export const MCPAdapter: ProtocolAdapter<MCPToolSequence, MCPToolResult, MCPTool
       };
     });
 
-    // Map MCP resources to contract resources
-    const contractResources: ContractResource[] = (resources || []).map(r => ({
+    // Map MCP resources to planned resources (phase: 'planned')
+    const contractResources: PlannedResource[] = (resources || []).map(r => ({
       id: `mcp_resource_${r.uri}`,
       type: 'file',
+      phase: 'planned' as const,
       location: r.uri,
       format: r.mimeType || 'unknown',
+      purpose: r.description,
       metadata: {
         mcpResource: true,
-        name: r.name,
-        description: r.description
+        name: r.name
       }
     }));
 
@@ -1160,29 +1199,35 @@ export const MCPAdapter: ProtocolAdapter<MCPToolSequence, MCPToolResult, MCPTool
     return { tools, calls };
   },
 
-  extractResources(output: MCPToolResult, step: ContractStep): ContractResource[] {
-    const resources: ContractResource[] = [];
+  extractResources(output: MCPToolResult, step: ContractStep): CreatedResource[] {
+    const resources: CreatedResource[] = [];
+    const now = new Date().toISOString();
 
     output.content.forEach((content, index) => {
       if (content.type === 'text') {
         resources.push({
           id: `text_${step.id}_${index}`,
           type: 'data',
+          phase: 'created',
           format: 'text',
+          createdByStep: step.id,
+          createdAt: now,
           metadata: {
-            text: content.text,
-            createdByStep: step.id
+            text: content.text
           }
         });
       } else if (content.type === 'resource') {
         resources.push({
           id: `resource_${content.resource.uri}`,
           type: 'file',
+          phase: 'created',
           location: content.resource.uri,
+          actualLocation: content.resource.uri,
           format: content.resource.mimeType || 'unknown',
+          createdByStep: step.id,
+          createdAt: now,
           metadata: {
-            text: content.resource.text,
-            createdByStep: step.id
+            text: content.resource.text
           }
         });
       }
@@ -1191,8 +1236,8 @@ export const MCPAdapter: ProtocolAdapter<MCPToolSequence, MCPToolResult, MCPTool
     return resources;
   },
 
-  injectContext(step: ContractStep, available: ContractResource[]): MCPToolCall {
-    // Return tool call with context as additional arguments
+  injectContext(step: ContractStep, available: AvailableResource[]): MCPToolCall {
+    // Return tool call with verified context as additional arguments
     return {
       name: step.metadata?.mcpTool as string || step.agent,
       arguments: {
@@ -1200,7 +1245,10 @@ export const MCPAdapter: ProtocolAdapter<MCPToolSequence, MCPToolResult, MCPTool
         _context: available.map(r => ({
           id: r.id,
           type: r.type,
-          location: r.location
+          exportName: r.exportName,
+          importFrom: r.importFrom,
+          location: r.location,
+          verifiedAt: r.verifiedAt
         }))
       }
     };
@@ -1665,10 +1713,58 @@ export const middleware = createMiddleware();
 
 ---
 
+# Resource Lifecycle Integration
+
+The protocol adapters work with the unified resource model from ORC-61. This diagram shows how resources flow through the system:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  RESOURCE LIFECYCLE IN PROTOCOL ADAPTERS                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. toContract() creates PlannedResource[]                       │
+│     └─ phase: 'planned' - what WILL be created                   │
+│     └─ Defined in contract before execution                      │
+│                                                                  │
+│  2. Step executes (via wrap())                                   │
+│     └─ Protocol-specific execution happens                       │
+│                                                                  │
+│  3. extractResources() returns CreatedResource[]                 │
+│     └─ phase: 'created' - what WAS just created                  │
+│     └─ Needs validation before downstream use                    │
+│                                                                  │
+│  4. Validation (ORC-62 validators)                               │
+│     └─ Validators check CreatedResource against assertions       │
+│     └─ Uses hybrid validator selection                           │
+│                                                                  │
+│  5. promoteToAvailable() creates AvailableResource[]             │
+│     └─ phase: 'available' - verified and ready                   │
+│     └─ Only valid resources are promoted                         │
+│                                                                  │
+│  6. injectContext() receives AvailableResource[]                 │
+│     └─ Next step only sees validated resources                   │
+│     └─ Type-safe consumption guarantees                          │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Key benefits of the unified model in protocol adapters:
+
+| Aspect | Benefit |
+|--------|---------|
+| Type Safety | TypeScript discriminated unions ensure correct phase usage |
+| Validation | Only validated resources propagate to downstream steps |
+| Traceability | Each resource tracks createdByStep, createdAt, verifiedAt |
+| Protocol Agnostic | Same lifecycle works across A2A, MCP, LangChain, etc. |
+| Immutability | Resources transition phases, never mutate in place |
+
+---
+
 # References
 
-- **ORC-61**: Contract Generation System (contract structure, ContractResource, AgentContract)
-- **ORC-62**: Assertion Enforcement System (validation layer, Validator interface)
+- **ORC-61**: Contract Generation System (contract structure, unified ContractResource with phases)
+- **ORC-62**: Assertion Enforcement System (validation layer, Validator interface, hybrid selection)
+- **Unified Resource Model**: PlannedResource → CreatedResource → AvailableResource lifecycle
 - **A2A Protocol**: https://github.com/google/A2A
 - **MCP Specification**: https://modelcontextprotocol.io
 - **LangChain**: https://langchain.com
