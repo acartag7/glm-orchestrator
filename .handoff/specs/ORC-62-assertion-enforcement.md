@@ -1323,6 +1323,856 @@ export function ValidationResultsPanel({ result }: { result: ChunkValidationResu
 
 ---
 
+# Pluggable Validation Layer
+
+This section extends the validation system to work with any resource type, not just code files. It defines a validator interface that enables custom validation logic for different protocols and resource types.
+
+## 1. Validator Interface
+
+Define the core interface all validators must implement:
+
+```typescript
+/**
+ * Core validator interface.
+ * All validators (built-in and custom) must implement this interface.
+ */
+export interface Validator {
+  /** Unique identifier for this validator (e.g., "file-export", "json-schema") */
+  type: string;
+
+  /** Resource types this validator can check (e.g., ["file"], ["data", "artifact"]) */
+  supportedResourceTypes: string[];
+
+  /**
+   * Check if this validator can handle a specific resource.
+   * More granular than supportedResourceTypes - can check metadata, format, etc.
+   */
+  supports(resource: ContractResource): boolean;
+
+  /**
+   * Validate the resource exists and matches expectations.
+   * @param resource - The resource to validate
+   * @param assertion - The assertion defining what to check
+   * @param context - Execution context with available resources and outputs
+   * @returns Validation result with pass/fail and details
+   */
+  validate(
+    resource: ContractResource,
+    assertion: ContractAssertion,
+    context: ValidationContext
+  ): Promise<ValidationResult>;
+}
+
+/**
+ * Context passed to validators during validation.
+ * Provides access to execution state and other resources.
+ */
+export interface ValidationContext {
+  /** Working directory for file operations */
+  workingDir?: string;
+
+  /** All resources defined in the contract */
+  availableResources: ContractResource[];
+
+  /** Outputs from completed steps, keyed by step ID */
+  stepOutputs: Map<string, unknown>;
+
+  /** Protocol being used (affects resource interpretation) */
+  protocol: string;
+
+  /** Additional protocol-specific context */
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Result of a single validation check.
+ */
+export interface ValidationResult {
+  /** Whether the validation passed */
+  passed: boolean;
+
+  /** Which validator performed this check */
+  validator: string;
+
+  /** The resource that was validated */
+  resource: ContractResource;
+
+  /** The assertion that was checked */
+  assertion: ContractAssertion;
+
+  /** What was actually found (for error messages) */
+  actual?: unknown;
+
+  /** What was expected (for error messages) */
+  expected?: unknown;
+
+  /** Error message if validation failed */
+  error?: string;
+
+  /** How long validation took (ms) */
+  duration: number;
+
+  /** Validation tier (1=fast regex, 2=extended, 3=AST/heavy) */
+  tier?: 1 | 2 | 3;
+}
+```
+
+## 2. Built-in Validators
+
+These validators ship with the framework:
+
+### FileExportValidator (Current Tier 1/2 Implementation)
+
+Validates that exports exist in TypeScript/JavaScript files using regex.
+
+```typescript
+/**
+ * Validates file exports exist using regex patterns (fast).
+ * This is the existing Tier 1/2 validation from ORC-62.
+ */
+export const FileExportValidator: Validator = {
+  type: 'file-export',
+  supportedResourceTypes: ['file'],
+
+  supports(resource) {
+    return resource.type === 'file' &&
+           (resource.format === 'typescript' ||
+            resource.format === 'javascript' ||
+            resource.location?.match(/\.(ts|tsx|js|jsx)$/));
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+    const filePath = path.join(context.workingDir || '.', resource.location!);
+
+    // Tier 1: Direct export check
+    const exportName = assertion.check.target;
+    const pattern = new RegExp(
+      `export\\s+(const|function|interface|type|class)\\s+${exportName}\\b`
+    );
+
+    try {
+      const content = await fs.readFile(filePath, 'utf-8');
+
+      if (pattern.test(content)) {
+        return {
+          passed: true,
+          validator: 'file-export',
+          resource,
+          assertion,
+          actual: `Found export "${exportName}"`,
+          duration: Date.now() - startTime,
+          tier: 1
+        };
+      }
+
+      // Tier 2: Check re-exports
+      const reexportPattern = new RegExp(`export\\s*\\{[^}]*\\b${exportName}\\b[^}]*\\}`);
+      if (reexportPattern.test(content)) {
+        return {
+          passed: true,
+          validator: 'file-export',
+          resource,
+          assertion,
+          actual: `Found re-export "${exportName}"`,
+          duration: Date.now() - startTime,
+          tier: 2
+        };
+      }
+
+      return {
+        passed: false,
+        validator: 'file-export',
+        resource,
+        assertion,
+        expected: `Export "${exportName}"`,
+        actual: 'Not found',
+        error: `Export "${exportName}" not found in ${resource.location}`,
+        duration: Date.now() - startTime,
+        tier: 2
+      };
+    } catch (err) {
+      return {
+        passed: false,
+        validator: 'file-export',
+        resource,
+        assertion,
+        error: `Could not read file: ${err}`,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+};
+```
+
+### FileASTValidator (Current Tier 3)
+
+Validates TypeScript signatures using the compiler API.
+
+```typescript
+/**
+ * Validates TypeScript signatures using AST parsing (heavy).
+ * Use when regex-based validation is insufficient.
+ */
+export const FileASTValidator: Validator = {
+  type: 'file-ast',
+  supportedResourceTypes: ['file'],
+
+  supports(resource) {
+    return resource.type === 'file' &&
+           (resource.format === 'typescript' ||
+            resource.location?.match(/\.tsx?$/));
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+
+    // Only use AST for signature matching
+    if (assertion.check.type !== 'signature_match') {
+      return {
+        passed: false,
+        validator: 'file-ast',
+        resource,
+        assertion,
+        error: 'AST validator only handles signature_match assertions',
+        duration: Date.now() - startTime
+      };
+    }
+
+    const filePath = path.join(context.workingDir || '.', resource.location!);
+    const expectedSignature = assertion.check.expected;
+
+    // Use TypeScript compiler API (implementation in ORC-62 Roadmap)
+    const result = await checkSignatureMatch(filePath, assertion.check.target, expectedSignature);
+
+    return {
+      ...result,
+      validator: 'file-ast',
+      resource,
+      duration: Date.now() - startTime,
+      tier: 3
+    };
+  }
+};
+```
+
+### JSONSchemaValidator (New)
+
+Validates data resources against JSON Schema.
+
+```typescript
+import Ajv from 'ajv';
+
+/**
+ * Validates data resources against JSON Schema.
+ * Useful for validating API responses, config files, structured outputs.
+ */
+export const JSONSchemaValidator: Validator = {
+  type: 'json-schema',
+  supportedResourceTypes: ['data', 'message', 'artifact'],
+
+  supports(resource) {
+    return ['data', 'message', 'artifact'].includes(resource.type) &&
+           (resource.schema !== undefined || resource.format === 'json');
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+    const ajv = new Ajv({ allErrors: true });
+
+    // Get schema from assertion or resource
+    const schema = assertion.check.schema || resource.schema;
+    if (!schema) {
+      return {
+        passed: false,
+        validator: 'json-schema',
+        resource,
+        assertion,
+        error: 'No schema defined for validation',
+        duration: Date.now() - startTime
+      };
+    }
+
+    // Get data to validate
+    let data: unknown;
+    if (resource.location) {
+      // Read from file
+      const filePath = path.join(context.workingDir || '.', resource.location);
+      try {
+        const content = await fs.readFile(filePath, 'utf-8');
+        data = JSON.parse(content);
+      } catch (err) {
+        return {
+          passed: false,
+          validator: 'json-schema',
+          resource,
+          assertion,
+          error: `Could not read/parse resource: ${err}`,
+          duration: Date.now() - startTime
+        };
+      }
+    } else {
+      // Get from step outputs
+      data = context.stepOutputs.get(resource.id);
+    }
+
+    // Validate
+    const validate = ajv.compile(schema);
+    const valid = validate(data);
+
+    return {
+      passed: valid,
+      validator: 'json-schema',
+      resource,
+      assertion,
+      expected: 'Matches schema',
+      actual: valid ? 'Valid' : ajv.errorsText(validate.errors),
+      error: valid ? undefined : ajv.errorsText(validate.errors),
+      duration: Date.now() - startTime
+    };
+  }
+};
+```
+
+### HTTPValidator (New)
+
+Validates HTTP endpoints exist and return expected shapes.
+
+```typescript
+/**
+ * Validates HTTP endpoints exist and return expected responses.
+ * Useful for agent workflows involving APIs.
+ */
+export const HTTPValidator: Validator = {
+  type: 'http',
+  supportedResourceTypes: ['api', 'endpoint'],
+
+  supports(resource) {
+    return ['api', 'endpoint'].includes(resource.type) ||
+           resource.location?.startsWith('http');
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+    const url = resource.location;
+
+    if (!url) {
+      return {
+        passed: false,
+        validator: 'http',
+        resource,
+        assertion,
+        error: 'No URL specified for HTTP resource',
+        duration: Date.now() - startTime
+      };
+    }
+
+    try {
+      const response = await fetch(url, {
+        method: assertion.check.method || 'GET',
+        headers: assertion.check.headers as Record<string, string>
+      });
+
+      // Check status if expected
+      if (assertion.check.expectedStatus) {
+        const statusMatch = response.status === assertion.check.expectedStatus;
+        if (!statusMatch) {
+          return {
+            passed: false,
+            validator: 'http',
+            resource,
+            assertion,
+            expected: `Status ${assertion.check.expectedStatus}`,
+            actual: `Status ${response.status}`,
+            error: `Expected status ${assertion.check.expectedStatus}, got ${response.status}`,
+            duration: Date.now() - startTime
+          };
+        }
+      }
+
+      // Check response schema if provided
+      if (assertion.check.schema) {
+        const data = await response.json();
+        const ajv = new Ajv();
+        const validate = ajv.compile(assertion.check.schema);
+        const valid = validate(data);
+
+        return {
+          passed: valid,
+          validator: 'http',
+          resource,
+          assertion,
+          expected: 'Response matches schema',
+          actual: valid ? 'Valid' : ajv.errorsText(validate.errors),
+          duration: Date.now() - startTime
+        };
+      }
+
+      return {
+        passed: true,
+        validator: 'http',
+        resource,
+        assertion,
+        actual: `Endpoint accessible (${response.status})`,
+        duration: Date.now() - startTime
+      };
+    } catch (err) {
+      return {
+        passed: false,
+        validator: 'http',
+        resource,
+        assertion,
+        error: `HTTP request failed: ${err}`,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+};
+```
+
+### ExistsValidator (Simple Baseline)
+
+Validates that a resource location is accessible.
+
+```typescript
+/**
+ * Simple existence check - validates resource location is accessible.
+ * Runs first as a fast-fail baseline before more specific validators.
+ */
+export const ExistsValidator: Validator = {
+  type: 'exists',
+  supportedResourceTypes: ['*'],  // Supports all types
+
+  supports(resource) {
+    return resource.location !== undefined;
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+    const location = resource.location!;
+
+    // File-based resource
+    if (!location.startsWith('http')) {
+      const filePath = path.join(context.workingDir || '.', location);
+      try {
+        await fs.access(filePath);
+        return {
+          passed: true,
+          validator: 'exists',
+          resource,
+          assertion,
+          actual: 'Resource exists',
+          duration: Date.now() - startTime
+        };
+      } catch {
+        return {
+          passed: false,
+          validator: 'exists',
+          resource,
+          assertion,
+          expected: `Resource at ${location}`,
+          actual: 'Not found',
+          error: `Resource not found: ${location}`,
+          duration: Date.now() - startTime
+        };
+      }
+    }
+
+    // URL-based resource
+    try {
+      const response = await fetch(location, { method: 'HEAD' });
+      return {
+        passed: response.ok,
+        validator: 'exists',
+        resource,
+        assertion,
+        actual: response.ok ? 'Resource accessible' : `HTTP ${response.status}`,
+        duration: Date.now() - startTime
+      };
+    } catch (err) {
+      return {
+        passed: false,
+        validator: 'exists',
+        resource,
+        assertion,
+        error: `Could not access resource: ${err}`,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+};
+```
+
+## 3. Validator Registry
+
+```typescript
+/**
+ * Registry for managing validators.
+ * Allows registration of custom validators and automatic selection.
+ */
+export interface ValidatorRegistry {
+  /**
+   * Register a custom validator.
+   * Overwrites existing validator with same type.
+   */
+  register(validator: Validator): void;
+
+  /**
+   * Get validator by type.
+   */
+  get(type: string): Validator | undefined;
+
+  /**
+   * Find all validators that support a given resource.
+   * Returns validators in priority order.
+   */
+  findFor(resource: ContractResource): Validator[];
+
+  /**
+   * Validate a resource using automatic validator selection.
+   * Tries validators in order until one handles the assertion.
+   */
+  validate(
+    resource: ContractResource,
+    assertion: ContractAssertion,
+    context: ValidationContext
+  ): Promise<ValidationResult>;
+}
+
+/**
+ * Create a validator registry with built-in validators.
+ */
+export function createValidatorRegistry(): ValidatorRegistry {
+  const validators = new Map<string, Validator>();
+
+  // Register built-in validators
+  validators.set('exists', ExistsValidator);
+  validators.set('file-export', FileExportValidator);
+  validators.set('file-ast', FileASTValidator);
+  validators.set('json-schema', JSONSchemaValidator);
+  validators.set('http', HTTPValidator);
+
+  return {
+    register(validator) {
+      validators.set(validator.type, validator);
+    },
+
+    get(type) {
+      return validators.get(type);
+    },
+
+    findFor(resource) {
+      return Array.from(validators.values())
+        .filter(v =>
+          (v.supportedResourceTypes.includes('*') ||
+           v.supportedResourceTypes.includes(resource.type)) &&
+          v.supports(resource)
+        );
+    },
+
+    async validate(resource, assertion, context) {
+      // If assertion specifies a validator, use it
+      if (assertion.check.validator) {
+        const validator = validators.get(assertion.check.validator);
+        if (!validator) {
+          return {
+            passed: false,
+            validator: 'unknown',
+            resource,
+            assertion,
+            error: `Unknown validator: ${assertion.check.validator}`,
+            duration: 0
+          };
+        }
+        return validator.validate(resource, assertion, context);
+      }
+
+      // Auto-select based on resource type and assertion
+      const candidates = this.findFor(resource);
+      if (candidates.length === 0) {
+        return {
+          passed: false,
+          validator: 'none',
+          resource,
+          assertion,
+          error: `No validator found for resource type: ${resource.type}`,
+          duration: 0
+        };
+      }
+
+      // Use first matching validator
+      return candidates[0].validate(resource, assertion, context);
+    }
+  };
+}
+```
+
+## 4. Validation Chain
+
+The validation strategy runs multiple validators in sequence:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  VALIDATION CHAIN                                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. ExistsValidator (runs first - fast fail)                    │
+│     └─ Does the resource location exist?                        │
+│        └─ FAIL → Stop immediately, return error                 │
+│        └─ PASS → Continue to next validator                     │
+│                                                                 │
+│  2. Type-Specific Validator (based on resource type)            │
+│     └─ file → FileExportValidator (Tier 1/2)                   │
+│     └─ data/message → JSONSchemaValidator                       │
+│     └─ api/endpoint → HTTPValidator                             │
+│        └─ FAIL → Stop, return error                             │
+│        └─ PASS → Continue to custom validators                  │
+│                                                                 │
+│  3. Custom Validators (user-defined, run last)                  │
+│     └─ Protocol-specific checks                                 │
+│     └─ Domain-specific validation                               │
+│        └─ All must pass for assertion to pass                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```typescript
+/**
+ * Run validation chain for a resource.
+ * All validators in the chain must pass.
+ */
+export async function runValidationChain(
+  resource: ContractResource,
+  assertion: ContractAssertion,
+  context: ValidationContext,
+  registry: ValidatorRegistry
+): Promise<ValidationResult[]> {
+  const results: ValidationResult[] = [];
+
+  // 1. Always run exists check first (fast fail)
+  if (assertion.check.type !== 'exists' && resource.location) {
+    const existsValidator = registry.get('exists')!;
+    const existsResult = await existsValidator.validate(resource, {
+      ...assertion,
+      check: { type: 'exists', target: resource.id }
+    }, context);
+
+    results.push(existsResult);
+
+    if (!existsResult.passed) {
+      return results;  // Fast fail
+    }
+  }
+
+  // 2. Run the main assertion validator
+  const mainResult = await registry.validate(resource, assertion, context);
+  results.push(mainResult);
+
+  return results;
+}
+```
+
+## 5. Custom Validator Example
+
+Show how users would implement a custom validator:
+
+```typescript
+/**
+ * Example: Custom validator for Slack messages.
+ * Validates that a message was posted to the correct channel.
+ */
+const SlackMessageValidator: Validator = {
+  type: 'slack-message',
+  supportedResourceTypes: ['message'],
+
+  supports(resource) {
+    return resource.type === 'message' &&
+           resource.metadata?.platform === 'slack';
+  },
+
+  async validate(resource, assertion, context) {
+    const startTime = Date.now();
+    const channelId = resource.metadata?.channelId as string;
+    const messageId = resource.metadata?.messageId as string;
+
+    if (!channelId || !messageId) {
+      return {
+        passed: false,
+        validator: 'slack-message',
+        resource,
+        assertion,
+        error: 'Missing channelId or messageId in resource metadata',
+        duration: Date.now() - startTime
+      };
+    }
+
+    try {
+      // Check Slack API for message existence
+      const slackToken = process.env.SLACK_TOKEN;
+      const response = await fetch(
+        `https://slack.com/api/conversations.history?channel=${channelId}&latest=${messageId}&limit=1`,
+        { headers: { Authorization: `Bearer ${slackToken}` } }
+      );
+
+      const data = await response.json();
+      const messageExists = data.ok && data.messages?.length > 0;
+
+      // Optionally validate message content against schema
+      if (messageExists && assertion.check.schema) {
+        const ajv = new Ajv();
+        const validate = ajv.compile(assertion.check.schema);
+        const valid = validate(data.messages[0]);
+
+        return {
+          passed: valid,
+          validator: 'slack-message',
+          resource,
+          assertion,
+          expected: 'Message matches schema',
+          actual: valid ? 'Valid' : ajv.errorsText(validate.errors),
+          duration: Date.now() - startTime
+        };
+      }
+
+      return {
+        passed: messageExists,
+        validator: 'slack-message',
+        resource,
+        assertion,
+        actual: messageExists ? 'Message found' : 'Message not found',
+        duration: Date.now() - startTime
+      };
+    } catch (err) {
+      return {
+        passed: false,
+        validator: 'slack-message',
+        resource,
+        assertion,
+        error: `Slack API error: ${err}`,
+        duration: Date.now() - startTime
+      };
+    }
+  }
+};
+
+// Register the custom validator
+const registry = createValidatorRegistry();
+registry.register(SlackMessageValidator);
+```
+
+## 6. Assertion Extensions
+
+Extend `ContractAssertion` to support the generic resource model:
+
+```typescript
+/**
+ * Extended ContractAssertion for generic resources.
+ * Backward compatible with existing file-based assertions.
+ */
+export interface ContractAssertion {
+  type: 'assert' | 'suggest';
+  condition: string;                   // Human-readable condition
+  message: string;                     // Error message if violated
+
+  check: {
+    type: AssertionCheckType;
+    target: string;                    // Resource ID (or export name for files)
+
+    // Optional: Specify which validator to use
+    validator?: string;                // e.g., "json-schema", "slack-message"
+
+    // For schema validation
+    schema?: JSONSchema;
+
+    // For pattern matching
+    pattern?: string;
+
+    // For equality checks
+    expected?: unknown;
+
+    // For HTTP validation
+    method?: string;
+    headers?: Record<string, string>;
+    expectedStatus?: number;
+
+    // Legacy: File path (for backward compatibility)
+    file?: string;
+  };
+}
+
+/**
+ * Extended check types for generic resources.
+ * Includes all original types plus new generic ones.
+ */
+export type AssertionCheckType =
+  // Existing (file-based)
+  | 'export_exists'        // File export exists (current)
+  | 'file_exists'          // File exists (current)
+  | 'pattern_match'        // Regex pattern (current)
+  | 'signature_match'      // Function signature (current)
+  | 'function_exists'      // Function exists (current)
+  | 'type_matches'         // Type shape (roadmap)
+
+  // New (generic)
+  | 'exists'               // Resource exists (any type)
+  | 'schema_match'         // Matches JSON schema
+  | 'http_status'          // HTTP endpoint returns status
+  | 'contains'             // Resource contains value
+  | 'equals'               // Resource equals value
+  | 'custom';              // Custom validator
+```
+
+## 7. Backward Compatibility
+
+This pluggable validation layer is **additive** and maintains full backward compatibility:
+
+| Aspect | Status |
+|--------|--------|
+| Current file-based validators | **Unchanged** - FileExportValidator and FileASTValidator work exactly as before |
+| Current assertion types | **Valid** - All existing assertion types continue to work |
+| Specwright execution | **Uses file validators by default** - No changes to current code paths |
+| Generic validators | **Opt-in** - Only used when resource type is non-file or validator is specified |
+| Custom validators | **Opt-in** - Register via ValidatorRegistry for custom protocols |
+
+### Default Validator Selection
+
+When no validator is explicitly specified:
+
+| Resource Type | Default Validator |
+|--------------|-------------------|
+| `file` | FileExportValidator |
+| `data` | JSONSchemaValidator |
+| `message` | JSONSchemaValidator |
+| `artifact` | ExistsValidator |
+| `api` / `endpoint` | HTTPValidator |
+| Other | ExistsValidator |
+
+### Protocol Adapter Integration
+
+Protocol adapters (from ORC-61) can register their own validators:
+
+```typescript
+class SpecwrightAdapter implements ProtocolAdapter {
+  // ... other methods ...
+
+  registerValidators(registry: ValidatorRegistry): void {
+    // Specwright uses file-based validators (already registered)
+    // Could add custom validators for specific Specwright checks
+  }
+}
+
+class SlackAdapter implements ProtocolAdapter {
+  // ... other methods ...
+
+  registerValidators(registry: ValidatorRegistry): void {
+    registry.register(SlackMessageValidator);
+    registry.register(SlackChannelValidator);
+  }
+}
+```
+
+---
+
 # Acceptance Criteria
 
 ## MVP
